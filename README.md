@@ -1,4 +1,8 @@
 # ClickerRecord
+
+![image](https://github.com/user-attachments/assets/26d00c04-2fb9-427b-8eb4-edf334cb8cc6)
+
+
 ## Description
 ClickerRecord is a Windows application that records mouse movements, clicks, and keyboard inputs, then plays them back. It features a modern, user-friendly, and multi-language interface.
 ## Key Features
