@@ -3,15 +3,17 @@ import json
 import time
 import os
 from datetime import datetime, timedelta
-from PyQt5.QtCore import Qt, QTimer, QTime
+from PyQt5.QtCore import Qt, QTimer, QTime, QObject, pyqtSignal, QSettings
 from PyQt5.QtGui import QIcon, QFont, QKeySequence
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QPushButton, QLabel, QSpinBox, 
                             QRadioButton, QSlider, QFileDialog, QStatusBar, QWidget, 
                             QVBoxLayout, QHBoxLayout, QTimeEdit, QButtonGroup, QLineEdit,
-                            QShortcut, QMessageBox, QGridLayout, QFrame)
+                            QShortcut, QMessageBox, QGridLayout, QFrame, QDialog, QListWidget, 
+                            QListWidgetItem, QCheckBox)
 from recorder import Recorder
 from player import Player
 import locale
+import threading # <-- Добавлено
 
 # All comments below this line are in English
 # Button styles for different states
@@ -59,6 +61,7 @@ BASE_TRANSLATIONS = {
         'file': 'File:',
         'ready': 'Ready',
         'recording': 'Recording...',
+        'infinite_repeats': 'Infinite Repeats', # <-- Добавлен ключ
         'playing': 'Playing...',
         'no_actions': 'No actions recorded to play.',
         'error': 'Error',
@@ -67,6 +70,7 @@ BASE_TRANSLATIONS = {
         'once': 'Run once',
         'interval': 'Run every',
         'minutes': 'minutes',
+        'seconds': 'seconds', # <-- Добавлен ключ для секунд
         'at_time': 'Run at',
         'speed': 'Playback speed:',
     'help_title': 'Help - ClickerRecord',
@@ -133,6 +137,7 @@ TRANSLATIONS = {
         'file': 'Файл:',
         'ready': 'Готово',
         'recording': 'Запись...',
+        'infinite_repeats': 'Бесконечные повторы', # <-- Добавлен перевод
         'playing': 'Воспроизведение...',
         'no_actions': 'Нет записанных действий для воспроизведения.',
         'error': 'Ошибка',
@@ -141,6 +146,7 @@ TRANSLATIONS = {
         'once': 'Запустить один раз',
         'interval': 'Запускать каждые',
         'minutes': 'минут',
+        'seconds': 'секунд', # <-- Добавлен перевод
         'at_time': 'Запускать в',
         'speed': 'Скорость воспроизведения:',
         'help_title': 'Справка - ClickerRecord',
@@ -240,6 +246,7 @@ TRANSLATIONS = {
         'file': 'Datei:',
         'ready': 'Bereit',
         'recording': 'Aufnahme...',
+        'infinite_repeats': 'Unendliche Wiederholungen', # <-- Добавлен перевод
         'playing': 'Wiedergabe...',
         'no_actions': 'Keine Aktionen zum Abspielen aufgezeichnet.',
         'error': 'Fehler',
@@ -248,6 +255,7 @@ TRANSLATIONS = {
         'once': 'Einmal ausführen',
         'interval': 'Alle',
         'minutes': 'Minuten ausführen',
+        'seconds': 'Sekunden ausführen', # <-- Добавлен перевод
         'at_time': 'Ausführen um',
         'speed': 'Wiedergabegeschwindigkeit:',
         'help_title': 'Hilfe - ClickerRecord',
@@ -290,6 +298,7 @@ TRANSLATIONS = {
         'file': 'File:',
         'ready': 'Pronto',
         'recording': 'Registrazione...',
+        'infinite_repeats': 'Ripetizioni infinite', # <-- Добавлен перевод
         'playing': 'Riproduzione...',
         'no_actions': 'Nessuna azione registrata da riprodurre.',
         'error': 'Errore',
@@ -298,6 +307,7 @@ TRANSLATIONS = {
         'once': 'Esegui una volta',
         'interval': 'Esegui ogni',
         'minutes': 'minuti',
+        'seconds': 'secondi', # <-- Добавлен перевод
         'at_time': 'Esegui alle',
         'speed': 'Velocità di riproduzione:',
         'help_title': 'Aiuto - ClickerRecord',
@@ -340,6 +350,7 @@ TRANSLATIONS = {
         'file': 'ファイル：',
         'ready': '準備完了',
         'recording': '記録中...',
+        'infinite_repeats': '無限繰り返し', # <-- Добавлен перевод
         'playing': '再生中...',
         'no_actions': '再生する記録がありません。',
         'error': 'エラー',
@@ -348,6 +359,7 @@ TRANSLATIONS = {
         'once': '1回実行',
         'interval': '毎',
         'minutes': '分実行',
+        'seconds': '秒実行', # <-- Добавлен перевод
         'at_time': '指定時刻に実行',
         'speed': '再生速度：',
         'help_title': 'ヘルプ - ClickerRecord',
@@ -390,6 +402,7 @@ TRANSLATIONS = {
         'file': 'Dosya:',
         'ready': 'Hazır',
         'recording': 'Kaydediyor...',
+        'infinite_repeats': 'Sonsuz Tekrar', # <-- Добавлен перевод
         'playing': 'Oynatılıyor...',
         'no_actions': 'Oynatılacak kayıtlı işlem yok.',
         'error': 'Hata',
@@ -398,8 +411,9 @@ TRANSLATIONS = {
         'once': 'Bir kez çalıştır',
         'interval': 'Her',
         'minutes': 'dakikada bir çalıştır',
-        'at_time': 'Şu saatte çalıştır',
-        'speed': 'Oynatma hızı:',
+        'seconds': 'sekund', # <-- Добавлен перевод
+        'at_time': 'Uruchom o',
+        'speed': 'Prędkość odtwarzania:',
         'help_title': 'Yardım - ClickerRecord',
         'help_text': 'ClickerRecord - Yardım\n\nTemel özellikler:\n- Fare ve klavye işlemlerini kaydet.\n- Kaydedilen işlemleri oynat.\n- Tekrar sayısı, hız ve zamanlama ayarla.\n- Kayıtları kaydet ve yükle.\n\nKısayollar:\nF6: Kaydı başlat/durdur\nF7: Oynat\nF8: Son işlemi tekrarla\nEsc: Oynatmayı durdur\nCtrl+S: Kaydet\nCtrl+O: Yükle',
         'no_actions_warning': 'Oynatılacak işlem yok.',
@@ -440,6 +454,7 @@ TRANSLATIONS = {
         'file': 'Plik:',
         'ready': 'Gotowy',
         'recording': 'Nagrywanie...',
+        'infinite_repeats': 'Nieskończone powtórzenia', # <-- Добавлен перевод
         'playing': 'Odtwarzanie...',
         'no_actions': 'Brak nagranych akcji do odtworzenia.',
         'error': 'Błąd',
@@ -448,6 +463,7 @@ TRANSLATIONS = {
         'once': 'Uruchom raz',
         'interval': 'Uruchamiaj co',
         'minutes': 'minut',
+        'seconds': 'sekund', # <-- Добавлен перевод
         'at_time': 'Uruchom o',
         'speed': 'Prędkość odtwarzania:',
         'help_title': 'Pomoc - ClickerRecord',
@@ -490,6 +506,7 @@ TRANSLATIONS = {
         'file': 'קובץ:',
         'ready': 'מוכן',
         'recording': 'מקליט...',
+        'infinite_repeats': 'חזרות אינסופיות', # <-- Добавлен перевод
         'playing': 'מפעיל...',
         'no_actions': 'אין פעולות מוקלטות להפעלה.',
         'error': 'שגיאה',
@@ -498,6 +515,7 @@ TRANSLATIONS = {
         'once': 'הפעל פעם אחת',
         'interval': 'הפעל כל',
         'minutes': 'דקות',
+        'seconds': 'שניות', # <-- Добавлен перевод
         'at_time': 'הפעל בשעה',
         'speed': 'מהירות הפעלה:',
         'help_title': 'עזרה - ClickerRecord',
@@ -576,6 +594,16 @@ class MainWindow(QMainWindow):
         self.playing = False
         self.recorded_actions = []
         self.current_file_path = None  # Путь к текущему файлу записи
+        self.settings = QSettings("ClickerRecord", "UserSettings")
+        
+        # Таймеры для расписания
+        self.schedule_timer = QTimer(self)
+        self.schedule_timer.setSingleShot(True) # По умолчанию однократный
+        self.schedule_timer.timeout.connect(self._trigger_scheduled_playback)
+        
+        self.interval_timer = QTimer(self)
+        self.interval_timer.timeout.connect(self._trigger_interval_playback)
+        self.interval_repeats_left = 0 # Счетчик оставшихся повторов для интервального таймера (небесконечного)
         
         self.initUI()
         self.connectSignals()
@@ -737,9 +765,14 @@ class MainWindow(QMainWindow):
         self.repeat_count.setFixedWidth(80)
         repeat_setup_layout.addWidget(self.repeat_label)
         repeat_setup_layout.addStretch()
+        self.infinite_repeat_checkbox = QCheckBox(self.translations.get('infinite_repeats', 'Infinite Repeats'))
+        self.infinite_repeat_checkbox.setFont(normal_font)
+        self.infinite_repeat_checkbox.setChecked(False)
+        repeat_setup_layout.addWidget(self.infinite_repeat_checkbox)
         repeat_setup_layout.addWidget(self.repeat_count)
         main_layout.addLayout(repeat_setup_layout)
         self.settings_widgets.append(self.repeat_count) # Добавляем только SpinBox
+        self.settings_widgets.append(self.infinite_repeat_checkbox) # Добавляем чекбокс в список управляемых
         
         schedule_group_layout = QVBoxLayout()
         schedule_group_layout.setSpacing(5)
@@ -761,11 +794,11 @@ class MainWindow(QMainWindow):
         self.interval_radio.setFont(normal_font)
         self.schedule_group.addButton(self.interval_radio)
         self.interval_value = QSpinBox()
-        self.interval_value.setRange(1, 1440)
+        self.interval_value.setRange(1, 3600 * 24) # От 1 секунды до 24 часов
         self.interval_value.setValue(5)
         self.interval_value.setFixedWidth(60)
         self.interval_value.setFont(normal_font)
-        self.interval_label = QLabel(self.translations['minutes'])
+        self.interval_label = QLabel(self.translations['seconds']) # <-- Изменено на seconds
         self.interval_label.setFont(normal_font)
         interval_layout.addWidget(self.interval_radio)
         interval_layout.addWidget(self.interval_value)
@@ -779,7 +812,7 @@ class MainWindow(QMainWindow):
         time_layout = QHBoxLayout()
         self.time_radio = QRadioButton(self.translations['at_time'])
         self.time_radio.setFont(normal_font)
-        self.time_radio.setChecked(True)
+        # Убираем self.time_radio.setChecked(True) # Пусть "once" будет по умолчанию
         self.schedule_group.addButton(self.time_radio)
         self.time_value = QTimeEdit()
         self.time_value.setDisplayFormat("HH:mm")
@@ -1002,8 +1035,67 @@ class MainWindow(QMainWindow):
             return
         if self.playing or self.recording:
             return
-        repeat_count = self.repeat_count.value()
+
         speed_factor = self.speed_slider.value() / 100.0
+
+        # Определяем режим запуска
+        if self.once_radio.isChecked():
+            repeat_count = self.repeat_count.value()
+            self._start_direct_playback(repeat_count, speed_factor)
+        elif self.interval_radio.isChecked():
+            interval_seconds = self.interval_value.value()
+            is_infinite = self.infinite_repeat_checkbox.isChecked()
+
+            if interval_seconds > 0:
+                # Сначала устанавливаем флаги и счетчики
+                if is_infinite:
+                    self.interval_repeats_left = -1 # Флаг бесконечности
+                    print(f"[start_playback] Запуск БЕСКОНЕЧНОГО интервального таймера: каждые {interval_seconds} сек")
+                else:
+                    self.interval_repeats_left = self.repeat_count.value()
+                    if self.interval_repeats_left <= 0:
+                        print("[start_playback] Количество повторов <= 0, запуск не требуется.")
+                        return # Не запускаем, если повторов 0 или меньше
+                    print(f"[start_playback] Запуск интервального таймера: каждые {interval_seconds} сек, повторов: {self.interval_repeats_left}")
+
+                # Ставим self.playing = True и обновляем UI ПЕРЕД первым запуском
+                self.playing = True # Устанавливаем флаг игры
+                self.updateUIState()
+
+                # Запускаем первый раз немедленно
+                self._trigger_interval_playback() # Этот вызов запустит плеер и, если нужно, перезапустит таймер
+
+                # --- УДАЛЕНО: Логика перезапуска таймера теперь полностью в _trigger_interval_playback ---
+                # if self.playing and (is_infinite or self.interval_repeats_left > 0):
+                #      self.interval_timer.start(interval_seconds * 1000)
+                # --- КОНЕЦ УДАЛЕНИЯ ---
+            else:
+                 print("[start_playback] Интервал <= 0, интервальный режим не запущен.")
+                 # Если интервал 0, то играть не начинаем
+                 return
+
+            # --- ПЕРЕМЕЩЕНО ВЫШЕ: Установка playing и updateUIState перед первым запуском ---
+            # self.playing = True # Устанавливаем флаг игры
+            # self.updateUIState()
+            # --- КОНЕЦ ПЕРЕМЕЩЕНИЯ ---
+        elif self.time_radio.isChecked():
+            target_time = self.time_value.time()
+            current_time = QTime.currentTime()
+            msecs_to_target = current_time.msecsTo(target_time)
+
+            if msecs_to_target < 0: # Если время уже прошло сегодня, планируем на завтра
+                msecs_to_target += 24 * 60 * 60 * 1000 
+            
+            print(f"[start_playback] Запуск таймера на время: {target_time.toString('HH:mm')}, через {msecs_to_target / 1000:.1f} сек")
+            self.schedule_timer.setSingleShot(True) # Убедимся, что таймер однократный
+            self.schedule_timer.start(msecs_to_target)
+            self.playing = True # Устанавливаем флаг игры, пока ждем таймер
+            self.updateUIState()
+            self.statusBar.showMessage(f"Запланировано на {target_time.toString('HH:mm')}")
+
+    def _start_direct_playback(self, repeat_count, speed_factor):
+        """Запускает немедленное воспроизведение заданное число раз."""
+        print(f"[start_playback] Прямой запуск: повторов={repeat_count}, скорость={speed_factor}")
         self.playing = True
         try:
             self.player.play(
@@ -1020,47 +1112,200 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, self.translations['playback_error_title'], self.translations.get('playback_error_text', TRANSLATIONS['en']['playback_error_text']).format(error=e))
             self.playing = False
             self.updateUIState()
-    
-    def stop_playback(self):
-        """Остановка воспроизведения"""
-        if not self.playing:
-            return
             
-        try:
-            print("[stop_playback] Запрос на остановку плеера.")
-            self.player.stop()
-            # Не меняем self.playing здесь, ждем callback on_playback_completed/on_playback_error
-            # Но можно обновить статус
-            self.statusBar.showMessage(self.translations.get('playback_stopped', TRANSLATIONS['en']['playback_stopped']))
-        except Exception as e:
-             print(f"[stop_playback] Ошибка при вызове player.stop(): {e}")
-             # На всякий случай, если stop вызвал исключение, попробуем сбросить состояние
+    def _trigger_scheduled_playback(self):
+        """Срабатывает по таймеру для 'Run at HH:MM'."""
+        print("[schedule_timer] Таймер сработал.")
+        if self.playing: # Проверка, что не остановили вручную
+             repeat_count = self.repeat_count.value()
+             speed_factor = self.speed_slider.value() / 100.0
+             # Запускаем однократно, т.к. таймер был SingleShot
+             # Флаг self.playing уже True, плеер сам его сбросит по завершению/ошибке
+             self._start_direct_playback(repeat_count, speed_factor)
+             # Важно: Не сбрасываем self.playing здесь, ждем сигнал от плеера
+        else:
+             print("[schedule_timer] Воспроизведение было отменено.")
+             # Убедимся, что UI обновлен
+             self.updateUIState()
+
+    def _trigger_interval_playback(self):
+         """Срабатывает по таймеру для 'Run every X seconds'. Запускает ОДИН цикл воспроизведения."""
+         if self.playing: # Проверяем, что не было остановки
+            is_infinite = (self.interval_repeats_left == -1) # Проверяем флаг бесконечности
+            
+            # Если режим конечный, проверяем, остались ли еще повторы (перед текущим запуском)
+            if not is_infinite and self.interval_repeats_left <= 0:
+                 print("[_trigger_interval_playback] Повторы закончились, но таймер сработал? Остановка.")
+                 # Не вызываем stop_playback(), чтобы не сбросить плеер, если он еще играет последний раз
+                 if self.interval_timer.isActive():
+                     self.interval_timer.stop()
+                 # Состояние playing сбросится в on_playback_completed
+                 return
+                 
+            speed_factor = self.speed_slider.value() / 100.0
+            
+            # Уменьшаем счетчик, если режим не бесконечный (делаем это *после* запуска play)
+            # current_repeat_num_str = "(бесконечно)" # Для логгирования
+            # if not is_infinite:
+            #     remaining_before_play = self.interval_repeats_left
+            #     # self.interval_repeats_left -= 1 # Уменьшаем ПОСЛЕ play
+            #     current_repeat_num_str = f"(осталось {remaining_before_play} до запуска)"
+            
+            print(f"[_trigger_interval_playback] Запуск воспроизведения 1 раз.")
+            
+            # Запускаем плеер на repeat_count раз
+            try:
+                 # Запускаем плеер только на ОДИН раз
+                 self.player.play(self.recorded_actions, 1, speed_factor)
+                 
+                 # Уменьшаем счетчик ПОСЛЕ успешного запуска play, если режим не бесконечный
+                 if not is_infinite:
+                      self.interval_repeats_left -= 1
+                      print(f"[_trigger_interval_playback] Воспроизведение запущено, осталось {self.interval_repeats_left} запусков.")
+                 else:
+                      print(f"[_trigger_interval_playback] Воспроизведение (бесконечное) запущено.")
+
+            except Exception as e:
+                 print(f"[interval_timer] Ошибка при запуске player.play: {e}")
+                 QMessageBox.critical(self, self.translations['playback_error_title'], self.translations.get('playback_error_text', TRANSLATIONS['en']['playback_error_text']).format(error=e))
+                 self.stop_playback() # Останавливаем всю серию при ошибке
+                 return
+                 
+            # Логика перезапуска таймера перенесена сюда (после успешного play)
+            # Если игра все еще активна (не остановили во время play) 
+            # и (режим бесконечный ИЛИ остались повторы > 0)
+            if self.playing and (is_infinite or self.interval_repeats_left > 0):
+                 interval_seconds = self.interval_value.value()
+                 # Запускаем таймер только если интервал положительный
+                 if interval_seconds > 0:
+                      print(f"[_trigger_interval_playback] Планируем следующий запуск через {interval_seconds} сек.")
+                      self.interval_timer.start(interval_seconds * 1000)
+                 else:
+                      print(f"[_trigger_interval_playback] Интервал <= 0, таймер не перезапускается.")
+                      # Если интервал 0, а повторы конечные, останавливаем
+                      if not is_infinite: 
+                           self.stop_playback() 
+            else:
+                 # Если повторы кончились (или остановили вручную)
+                 print("[_trigger_interval_playback] Конечные повторы завершены или остановлено вручную. Таймер не перезапускается.")
+                 # Не меняем self.playing здесь, ждем on_playback_completed/error от последнего play
+
+         else:
+             print("[_trigger_interval_playback] Воспроизведение было остановлено, таймер не перезапускается.")
+             if self.interval_timer.isActive(): # Доп. проверка
+                 self.interval_timer.stop()
+
+    def stop_playback(self):
+        """Остановка воспроизведения (прямого или по расписанию)"""
+        print("[stop_playback] Вызван метод остановки.")
+
+        # Останавливаем таймеры расписания, если они активны
+        was_timer_active = False
+        if self.schedule_timer.isActive():
+            print("[stop_playback] Остановка таймера 'Run at'.")
+            self.schedule_timer.stop()
+            was_timer_active = True
+        if self.interval_timer.isActive():
+            print("[stop_playback] Остановка таймера 'Run every'.")
+            self.interval_timer.stop()
+            was_timer_active = True
+
+        # Сбрасываем счетчик интервальных повторов
+        self.interval_repeats_left = 0
+
+        # Останавливаем плеер, если он активен
+        player_was_playing = self.player.is_playing # Проверяем фактическое состояние плеера
+        if player_was_playing:
+            try:
+                print("[stop_playback] Запрос на остановку плеера.")
+                self.player.stop()
+                # Не меняем self.playing здесь, ждем callback
+                self.statusBar.showMessage(self.translations.get('playback_stopped', TRANSLATIONS['en']['playback_stopped']))
+            except Exception as e:
+                print(f"[stop_playback] Ошибка при вызове player.stop(): {e}")
+                # Если ошибка при остановке плеера, всё равно сбрасываем состояние GUI
+                self.playing = False
+                self.updateUIState()
+                self.statusBar.showMessage(self.translations.get('playback_stop_error', TRANSLATIONS['en']['playback_stop_error']))
+                return # Выходим, чтобы не сбросить флаг еще раз ниже
+
+        # Если был активен таймер, но плеер еще не запущен (ожидание 'Run at' или между интервалами)
+        # или если плеер НЕ был активен (например, уже остановился сам),
+        # то нужно вручную сбросить флаг playing и обновить UI.
+        # Если плеер БЫЛ активен, то сброс флага и обновление UI произойдет в on_playback_completed/error.
+        if was_timer_active and not player_was_playing:
+             print("[stop_playback] Таймер был остановлен до запуска плеера. Сброс состояния GUI.")
              self.playing = False
              self.updateUIState()
-             self.statusBar.showMessage(self.translations.get('playback_stop_error', TRANSLATIONS['en']['playback_stop_error']))
+        elif not player_was_playing and self.playing: # Если плеер не играет, но GUI думает, что играет
+             print("[stop_playback] Плеер не активен, но флаг GUI был установлен. Сброс состояния GUI.")
+             self.playing = False
+             self.updateUIState()
+        else:
+             print("[stop_playback] Либо плеер активен (ждем колбек), либо уже все остановлено.")
 
-        # Убираем ручное управление кнопками
-        # self.play_button.setEnabled(True)
-        # self.stop_play_button.setEnabled(False)
-    
+         # Убираем ручное управление кнопками - оно теперь в updateUIState
+         # self.play_button.setEnabled(True)
+
     def on_playback_completed(self):
         """Слот, вызываемый сигналом playbackFinished из плеера"""
-        # Этот код теперь выполняется безопасно в основном потоке GUI
         print("[on_playback_completed] Слот вызван сигналом.")
-        if self.playing: # Дополнительная проверка, что состояние еще не было сброшено
-            self.playing = False
-            self.updateUIState() # Обновляем интерфейс
-            QApplication.processEvents()
-            print("[on_playback_completed] Состояние обновлено.")
+
+        # В режиме интервала:
+        # - Плеер завершил ОДИН цикл (из 1 повтора).
+        # - Флаг self.playing остается True.
+        # - Таймер был перезапущен (или должен быть перезапущен) в _trigger_interval_playback.
+        # - Остановка происходит ТОЛЬКО через stop_playback() или по завершению счетчика в _trigger_interval_playback.
+        # Поэтому здесь не нужно менять self.playing или останавливать таймер.
+
+        # Если это НЕ интервальный режим (был прямой запуск или 'Run at'):
+        # Проверяем, был ли режим интервальным, посмотрев на радио-кнопку (более надежно, чем timer.isActive())
+        is_interval_radio_checked = self.interval_radio.isChecked()
+
+        if not is_interval_radio_checked:
+             # Это был прямой запуск или 'Run at', и он завершился.
+             if self.playing: # Дополнительная проверка, что мы действительно считали себя играющими
+                 print("[on_playback_completed] Завершение НЕинтервального воспроизведения.")
+                 self.playing = False
+                 self.updateUIState() # Обновляем интерфейс
+                 QApplication.processEvents() # Даем интерфейсу обновиться
+                 print("[on_playback_completed] Состояние обновлено.")
+             else:
+                 print("[on_playback_completed] НЕинтервальное завершение, но self.playing уже был False.")
         else:
-            print("[on_playback_completed] Состояние playing уже было False.")
-        # Статус обновится через update_status
-        
+             # Это был один из запусков интервального таймера
+             print("[on_playback_completed] Завершение одного интервального цикла.")
+             # Проверяем, был ли это последний запуск (если режим не бесконечный)
+             # Важно: self.interval_repeats_left уже уменьшен в _trigger_interval_playback *перед* этим вызовом
+             is_infinite = (self.interval_repeats_left == -1) # Проверяем флаг бесконечности
+             if not is_infinite and self.interval_repeats_left <= 0:
+                  # Повторы закончились
+                  print("[on_playback_completed] Конечные интервальные повторы завершены. Сброс состояния.")
+                  if self.playing: # Доп. проверка
+                     self.playing = False
+                     self.updateUIState()
+                     QApplication.processEvents()
+                     print("[on_playback_completed] Интервальный режим завершен, состояние обновлено.")
+                  else:
+                     print("[on_playback_completed] Интервальный режим завершен, но self.playing уже был False.")
+             else:
+                 # Либо режим бесконечный, либо еще остались повторы - таймер должен был перезапуститься в _trigger_interval_playback
+                 print("[on_playback_completed] Интервальный цикл продолжается (или бесконечный). Логика продолжения в _trigger_interval_playback.")
+                 # Ничего не делаем здесь, интерфейс остается в состоянии 'Playing...'.
+
     def on_playback_error(self, error_message):
          """Слот, вызываемый сигналом playbackError из плеера"""
-         # Этот код теперь выполняется безопасно в основном потоке GUI
          print(f"[on_playback_error] Слот вызван сигналом: {error_message}")
+         
+         # При любой ошибке останавливаем все таймеры и сбрасываем состояние
+         if self.schedule_timer.isActive():
+             self.schedule_timer.stop()
+         if self.interval_timer.isActive():
+             self.interval_timer.stop()
+         # self.interval_repeats_left = 0 # Больше не нужно
+            
          if self.playing: # Доп. проверка
+              print("[on_playback_error] Ошибка во время воспроизведения. Сброс состояния.")
               self.playing = False
               self.updateUIState()
               QApplication.processEvents()
@@ -1083,7 +1328,7 @@ class MainWindow(QMainWindow):
              self.statusBar.showMessage(f"Воспроизведение... (расчет времени)")
     
     def check_schedule(self):
-        # Убираем эту логику, плеер теперь не использует расписание из GUI
+        # Этот метод больше не нужен, логика в start_playback
         pass 
     
     def update_speed_label(self, value):
@@ -1195,6 +1440,24 @@ class MainWindow(QMainWindow):
              )
              self.play_button.setText(self.translations['play'])
 
+        # Дополнительная логика для чекбокса и счетчика повторов
+        # Чекбокс "Бесконечные" активен только если выбран режим "Run every"
+        self.infinite_repeat_checkbox.setEnabled(is_idle and self.interval_radio.isChecked())
+        # Если чекбокс не активен, снимаем галку
+        if not self.infinite_repeat_checkbox.isEnabled():
+            self.infinite_repeat_checkbox.setChecked(False)
+            
+        # Счетчик повторов активен если:
+        # 1. Режим "Run once" или "Run at"
+        # 2. Режим "Run every" И НЕ выбран чекбокс "Бесконечные"
+        repeats_enabled = is_idle and (
+            self.once_radio.isChecked() or \
+            self.time_radio.isChecked() or \
+            (self.interval_radio.isChecked() and not self.infinite_repeat_checkbox.isChecked())
+        )
+        self.repeat_count.setEnabled(repeats_enabled)
+        self.repeat_label.setEnabled(repeats_enabled) # Также активируем/деактивируем метку
+
     def update_status(self):
         """Обновляет строку состояния и счетчик действий"""
         if self.recording:
@@ -1237,6 +1500,7 @@ class MainWindow(QMainWindow):
             print(f"Warning: Language code \'{lang_code}\' not found in TRANSLATIONS.")
 
     def updateUITexts(self):
+        """Обновляет тексты всех виджетов в соответствии с текущим языком"""
         self.setWindowTitle(self.translations['app_title'])
         self.record_button.setText(self.translations['start_record'])
         self.stop_record_button.setText(self.translations['stop_record'])
@@ -1246,30 +1510,22 @@ class MainWindow(QMainWindow):
         self.save_button.setText(self.translations['save'])
         self.load_button.setText(self.translations['load'])
         self.help_button.setText(self.translations['help'])
-        self.header_label.setText(self.translations['app_title'])
-        
-        # Обновляем текст виджетов настроек
+        self.action_count.setText(f"{self.translations['actions_recorded']} {len(self.recorded_actions)}")
         self.repeat_label.setText(self.translations['repeat_count'])
         self.schedule_label.setText(self.translations['schedule'])
         self.once_radio.setText(self.translations['once'])
         self.interval_radio.setText(self.translations['interval'])
-        self.interval_label.setText(self.translations['minutes'])
+        self.interval_label.setText(self.translations['seconds']) # <-- Обновлено на seconds
         self.time_radio.setText(self.translations['at_time'])
         self.speed_label.setText(self.translations['speed'])
-
-        # Обновляем подписи горячих клавиш (на случай, если они изменятся)
-        self.record_shortcut_label.setText("F6")
-        self.stop_record_shortcut_label.setText("F6")
-        self.play_shortcut_label.setText("F7")
-        self.stop_play_shortcut_label.setText("Esc")
-        self.language_shortcut_label.setText("F8")
-        self.save_shortcut_label.setText("Ctrl+S")
-        self.load_shortcut_label.setText("Ctrl+O")
-
-        # Обновляем состояние кнопок и статус (на случай, если текст изменился)
-        self.updateUIState()
-        self.update_status()
-
+        # Обновляем строку состояния, если она не показывает прогресс
+        if self.playing:
+            self.statusBar.showMessage(f"{self.translations['playing']} ({self.player.get_current_playback_time() // 1000} сек / {self.player.get_total_playback_time() // 1000} сек)")
+        else:
+            self.statusBar.showMessage("")
+        # Обновляем текст чекбокса
+        self.infinite_repeat_checkbox.setText(self.translations.get('infinite_repeats', 'Infinite Repeats'))
+    
     def show_language_dialog(self):
         from PyQt5.QtWidgets import QDialog, QVBoxLayout, QComboBox, QPushButton, QLabel
         dialog = QDialog(self)

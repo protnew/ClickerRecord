@@ -2,119 +2,130 @@ import os
 import sys
 import subprocess
 import shutil
-import time
+import locale
+from pathlib import Path
 
-def check_exe_exists():
-    """Проверяет наличие clicker.exe в папке dist"""
-    exe_path = os.path.join("dist", "clicker.exe")
-    if not os.path.exists(exe_path):
-        print("Ошибка: файл clicker.exe не найден в папке dist")
-        print("Сначала нужно собрать EXE-файл с помощью build.py")
-        return False
-    return True
+APP_NAME = "ClickerRecord"  # Fixed name
 
-def check_nsis_installed():
-    """Проверяет наличие установленного NSIS"""
-    # Типичные пути установки NSIS
-    nsis_paths = [
-        r"C:\Program Files\NSIS\makensis.exe",
-        r"C:\Program Files (x86)\NSIS\makensis.exe"
+def clean_previous_builds():
+    """Clean up artifacts from previous builds."""
+    print("Cleaning up previous builds...")
+    
+    folders_to_clean = ["dist", "build", "__pycache__"]
+    spec_file = f"{APP_NAME}.spec"
+    old_spec_files = ["clicker.spec", "clicker_v2.spec", "clicker_v2.1.spec", 
+                      "clicker_v2.3.spec", "clicker_v2.4.spec", "clicker_v2.5.spec"]
+    
+    files_to_clean = [spec_file] + old_spec_files
+    
+    for folder in folders_to_clean:
+        if os.path.exists(folder):
+            print(f"  Removing folder {folder}")
+            try:
+                shutil.rmtree(folder)
+            except Exception as e:
+                print(f"  Warning: Failed to remove {folder}: {str(e)}")
+                
+    for file in files_to_clean:
+        if os.path.exists(file):
+            print(f"  Removing file {file}")
+            try:
+                os.remove(file)
+            except Exception as e:
+                print(f"  Warning: Failed to remove {file}: {str(e)}")
+
+def build_exe():
+    """Build the EXE file."""
+    try:
+        import PyInstaller
+        print(f"Found PyInstaller version {PyInstaller.__version__}")
+    except ImportError:
+        print("PyInstaller not found. Installing...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "pyinstaller"], check=True)
+    
+    print("\nStarting EXE build process...")
+    
+    cmd = [
+        "pyinstaller",
+        f"--name={APP_NAME}",
+        "--onefile",
+        "--windowed",
+        "--clean",
+        "--icon=icon.ico",
+        "--noconfirm",
+        "--noupx",
+        "--noconsole",
+        "--log-level=WARN",
+        f"--add-data={os.path.abspath('icon.ico')};.",
+        "main.py"
     ]
     
-    for path in nsis_paths:
-        if os.path.exists(path):
-            return path
+    print(f"\nBuild command: {' '.join(cmd)}\n")
+    result = subprocess.run(cmd, capture_output=True, text=True, encoding=locale.getpreferredencoding(False), errors='ignore')
     
-    print("ПРЕДУПРЕЖДЕНИЕ: NSIS не найден по стандартным путям установки.")
-    print("Если NSIS установлен в нестандартной папке, инсталлятор не будет создан.")
-    print("Вы можете скачать NSIS с сайта: https://nsis.sourceforge.io/Download")
+    exe_path_in_dist = os.path.abspath(os.path.join("dist", f"{APP_NAME}.exe"))
+    final_exe_path = os.path.abspath(f"{APP_NAME}.exe")
     
-    # Пытаемся найти NSIS через переменную PATH
-    try:
-        result = subprocess.run(["where", "makensis"], capture_output=True, text=True)
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip().split("\n")[0]
-    except:
-        pass
-    
-    return None
-
-def check_required_files():
-    """Проверяет наличие всех необходимых файлов для инсталлятора"""
-    required_files = [
-        "icon.ico",
-        "license.txt",
-        "installer_welcome.bmp",
-        "installer_header.bmp",
-        "installer.nsi"
-    ]
-    
-    missing_files = []
-    for file in required_files:
-        if not os.path.exists(file):
-            missing_files.append(file)
-    
-    if missing_files:
-        print(f"Ошибка: не найдены следующие файлы: {', '.join(missing_files)}")
-        return False
-    
-    return True
-
-def build_installer(nsis_path):
-    """Сборка инсталлятора с помощью NSIS"""
-    try:
-        print("Начало сборки инсталлятора...")
-        
-        # Запуск процесса сборки
-        process = subprocess.Popen(
-            [nsis_path, "installer.nsi"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
-        )
-        
-        # Вывод прогресса сборки
-        while True:
-            output = process.stdout.readline()
-            if output == '' and process.poll() is not None:
-                break
-            if output:
-                print(output.strip())
-        
-        # Проверка результата сборки
-        if process.returncode == 0:
-            installer_path = "clicker_setup.exe"
-            if os.path.exists(installer_path):
-                print(f"\nСборка инсталлятора успешно завершена!")
-                print(f"Инсталлятор находится здесь: {os.path.abspath(installer_path)}")
-                return True
-            else:
-                print("Ошибка: инсталлятор не найден после сборки")
-                return False
-        else:
-            print("Ошибка при сборке инсталлятора")
+    if result.returncode == 0 and os.path.exists(exe_path_in_dist):
+        print(f"\nBuild successful: {exe_path_in_dist}")
+        try:
+            print(f"Moving {exe_path_in_dist} -> {final_exe_path}")
+            if os.path.exists(final_exe_path):
+                os.remove(final_exe_path)
+            shutil.move(exe_path_in_dist, final_exe_path)
+            size_mb = os.path.getsize(final_exe_path) / (1024 * 1024)
+            print(f"EXE file created: {final_exe_path}")
+            print(f"File size: {size_mb:.2f} MB")
+            return True
+        except Exception as e:
+            print(f"Error moving {APP_NAME}.exe: {e}")
             return False
-    except Exception as e:
-        print(f"Произошла ошибка: {str(e)}")
+    else:
+        print("Build failed!")
+        print(f"Return code: {result.returncode}")
+        print(f"Checked path: {exe_path_in_dist}")
+        print(f"Standard output:\n{result.stdout}")
+        if result.stderr:
+            print(f"Errors:\n{result.stderr}")
         return False
+
+def cleanup_build_files():
+    """Clean up temporary build files after moving the EXE."""
+    print("\nCleaning up temporary build files...")
+    folders_to_clean = ["dist", "build"]
+    spec_file = f"{APP_NAME}.spec"
+
+    for folder in folders_to_clean:
+        if os.path.exists(folder):
+            try:
+                shutil.rmtree(folder)
+                print(f"  Removed folder {folder}")
+            except Exception as e:
+                print(f"  Warning: Failed to remove folder {folder}: {e}")
+
+    if os.path.exists(spec_file):
+        try:
+            os.remove(spec_file)
+            print(f"  Removed file {spec_file}")
+        except Exception as e:
+            print(f"  Warning: Failed to remove file {spec_file}: {e}")
 
 def main():
-    # Проверяем наличие EXE-файла
-    if not check_exe_exists():
-        return
+    print("=" * 60)
+    print(f"Building application '{APP_NAME}'")
+    print("=" * 60)
     
-    # Проверяем наличие NSIS
-    nsis_path = check_nsis_installed()
-    if not nsis_path:
-        print("Инсталлятор не может быть создан: NSIS не найден")
-        return
+    clean_previous_builds()
     
-    # Проверяем наличие всех необходимых файлов
-    if not check_required_files():
-        return
+    if build_exe():
+        cleanup_build_files()
+        print("\nAll operations completed successfully!")
+        print(f"File {APP_NAME}.exe created in the current directory.")
+    else:
+        print("\nEXE build failed! Temporary files might remain.")
     
-    # Сборка инсталлятора
-    build_installer(nsis_path)
+    print("=" * 60)
 
 if __name__ == "__main__":
-    main() 
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    main()
