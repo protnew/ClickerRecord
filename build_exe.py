@@ -122,7 +122,7 @@ def main():
         print("\nAll operations completed successfully!")
         print(f"File {APP_NAME}.exe created in the current directory.")
     else:
-        print("\nEXE build failed! Temporary files might remain.")
+        print("\nEXE build failed! Temporary files might remain!")
     
     print("=" * 60)
 

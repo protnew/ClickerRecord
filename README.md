@@ -63,6 +63,7 @@ ClickerRecord is a Windows application that records mouse movements, clicks, and
 - `config.json` - Stores the last selected language (created automatically).
 - `LICENSE` - Contains the software license.
 - `README.md` - This file.
+
 ## Feedback
 If you have suggestions for improving the program or find a bug, please report it (e.g., by creating an Issue on the GitHub repository page).
 ![image](https://github.com/user-attachments/assets/0b05c271-b565-4ca2-8d11-985ec25abcdd)

@@ -61,7 +61,7 @@ BASE_TRANSLATIONS = {
         'file': 'File:',
         'ready': 'Ready',
         'recording': 'Recording...',
-        'infinite_repeats': 'Infinite Repeats', # <-- Добавлен ключ
+        'infinite_repeats': 'Infinite Repeats', # 
         'playing': 'Playing...',
         'no_actions': 'No actions recorded to play.',
         'error': 'Error',
@@ -70,7 +70,7 @@ BASE_TRANSLATIONS = {
         'once': 'Run once',
         'interval': 'Run every',
         'minutes': 'minutes',
-        'seconds': 'seconds', # <-- Добавлен ключ для секунд
+        'seconds': 'seconds', # 
         'at_time': 'Run at',
         'speed': 'Playback speed:',
     'help_title': 'Help - ClickerRecord',

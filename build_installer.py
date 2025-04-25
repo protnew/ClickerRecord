@@ -91,7 +91,7 @@ def build_exe():
 
 def cleanup_build_files():
     """Clean up temporary build files after moving the EXE."""
-    print("\nCleaning up temporary build files...")
+    print("\nCleaning up temporary build files... ")
     folders_to_clean = ["dist", "build"]
     spec_file = f"{APP_NAME}.spec"
 
