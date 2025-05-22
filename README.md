@@ -28,7 +28,7 @@ ClickerRecord is a Windows application that records mouse movements, clicks, and
 1. Set the desired repeat count.
 2. Choose the schedule type:
    - "Run once" - Starts immediately.
-   - "Run every X minutes" - Starts periodically after the specified interval.
+   - "Run every X seconds" - Starts periodically after the specified interval (default is 5 seconds).
    - "Run at" - Starts at the specified time.
 3. Adjust the playback speed using the slider.
 4. Click the "Play" button or press F7.

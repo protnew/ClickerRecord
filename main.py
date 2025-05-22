@@ -2,6 +2,7 @@ import sys
 import json
 import time
 import os
+import logging # <-- Added
 from datetime import datetime, timedelta
 from PyQt5.QtCore import Qt, QTimer, QTime, QObject, pyqtSignal, QSettings
 from PyQt5.QtGui import QIcon, QFont, QKeySequence
@@ -14,6 +15,20 @@ from recorder import Recorder
 from player import Player
 import locale
 import threading # <-- Добавлено
+
+# --- Logging Setup ---
+logger = logging.getLogger("ClickerRecord") # Use a specific name for the logger
+logger.setLevel(logging.DEBUG) 
+# Create file handler
+log_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'clickerrecord.log')
+fh = logging.FileHandler(log_file_path, encoding='utf-8')
+fh.setLevel(logging.DEBUG)
+# Create formatter
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(module)s - %(funcName)s - %(lineno)d - %(message)s')
+fh.setFormatter(formatter)
+# Add the handlers to the logger
+logger.addHandler(fh)
+# --- End Logging Setup ---
 
 # All comments below this line are in English
 # Button styles for different states
@@ -44,527 +59,6 @@ LANGUAGES = {
     'he': 'עברית',
 }
 
-# Базовый английский словарь с полным набором ключей
-BASE_TRANSLATIONS = {
-    'app_title': 'ClickerRecord',
-        'start_record': 'Start Recording',
-        'stop_record': 'Stop Recording',
-        'play': 'Play',
-        'stop_play': 'Stop Playback',
-        'repeat': 'Repeat Last',
-        'save': 'Save Recording',
-        'load': 'Load Recording',
-        'help': 'Help',
-        'settings': 'Settings',
-        'language': 'Language',
-        'actions_recorded': 'Actions recorded:',
-        'file': 'File:',
-        'ready': 'Ready',
-        'recording': 'Recording...',
-        'infinite_repeats': 'Infinite Repeats', # 
-        'playing': 'Playing...',
-        'no_actions': 'No actions recorded to play.',
-        'error': 'Error',
-        'repeat_count': 'Repeat count:',
-        'schedule': 'Schedule:',
-        'once': 'Run once',
-        'interval': 'Run every',
-        'minutes': 'minutes',
-        'seconds': 'seconds', # 
-        'at_time': 'Run at',
-        'speed': 'Playback speed:',
-    'help_title': 'Help - ClickerRecord',
-    'help_text': 'ClickerRecord - Help\n\nMain features:\n- Record mouse and keyboard actions.\n- Playback recorded actions.\n- Set repeat count, speed, and schedule.\n- Save and load recordings.\n\nHotkeys:\nF6: Start/Stop recording\nF7: Play\nF8: Repeat last\nEsc: Stop playback\nCtrl+S: Save\nCtrl+O: Load',
-        'no_actions_warning': 'No recorded actions to play.',
-        'no_actions_to_repeat': 'No recorded actions to repeat.',
-        'recording_error_title': 'Recording Error',
-        'recording_error_text': 'Failed to start recording: {error}',
-        'playback_error_title': 'Playback Error',
-        'playback_error_text': 'Failed to start playback: {error}',
-        'playback_type_error': 'Argument mismatch when calling Player.play:\n{error}\n\nInterface and player may be out of sync.',
-        'playback_stop_error': 'Error while stopping playback.',
-        'playback_stopped': 'Playback stopped...',
-        'save_error': 'Error saving:',
-        'load_error': 'Error loading:',
-        'load_file_error': 'Failed to load file:\n{error}',
-        'file_not_valid': 'File does not contain a valid list of actions.',
-    'help_dialog_title': 'Help - ClickerRecord',
-        'close_confirm': 'Are you sure you want to exit?',
-        'status_ready': 'Ready',
-        'status_recording': 'Recording... ({count})',
-        'status_playing': 'Playing... ({progress}%)',
-        'status_playing_simple': 'Playing...',
-        'status_no_actions': 'No actions recorded',
-        'status_saved': 'Recording saved:',
-        'status_loaded': 'Recording loaded:',
-        'status_error': 'Error:',
-        'status_stopped': 'Stopped',
-        'status_file': 'File:',
-        'status_actions': 'Actions:',
-        'dialog_ok': 'OK',
-        'dialog_cancel': 'Cancel',
-        'dialog_yes': 'Yes',
-        'dialog_no': 'No',
-        'repeat_last': 'Repeat last',
-        'repeat_last_warning': 'Cannot repeat: no actions.',
-        'repeat_last_busy': 'Cannot repeat: recording or playback in progress.',
-        'save_success': 'Recording saved successfully.',
-        'load_success': 'Recording loaded successfully.',
-        'file_dialog_save': 'Save recording',
-        'file_dialog_load': 'Load recording',
-        'file_dialog_filter': 'Clicker files (*.clk);;All files (*)',
-        'exit': 'Exit',
-        'settings_title': 'Settings',
-        'about': 'About',
-    'about_text': 'ClickerRecord\nMulti-language mouse and keyboard recorder.\n© 2025',
-}
-
-TRANSLATIONS = {
-    'en': BASE_TRANSLATIONS,
-    'ru': {
-        'app_title': 'ClickerRecord',
-        'start_record': 'Начать запись',
-        'stop_record': 'Остановить запись',
-        'play': 'Воспроизвести',
-        'stop_play': 'Остановить воспроизведение',
-        'repeat': 'Повторить последнее',
-        'save': 'Сохранить запись',
-        'load': 'Загрузить запись',
-        'help': 'Справка',
-        'settings': 'Настройки',
-        'language': 'Язык',
-        'actions_recorded': 'Записано действий:',
-        'file': 'Файл:',
-        'ready': 'Готово',
-        'recording': 'Запись...',
-        'infinite_repeats': 'Бесконечные повторы', # <-- Добавлен перевод
-        'playing': 'Воспроизведение...',
-        'no_actions': 'Нет записанных действий для воспроизведения.',
-        'error': 'Ошибка',
-        'repeat_count': 'Количество повторений:',
-        'schedule': 'Расписание:',
-        'once': 'Запустить один раз',
-        'interval': 'Запускать каждые',
-        'minutes': 'минут',
-        'seconds': 'секунд', # <-- Добавлен перевод
-        'at_time': 'Запускать в',
-        'speed': 'Скорость воспроизведения:',
-        'help_title': 'Справка - ClickerRecord',
-        'help_text': 'ClickerRecord - Справка\n\nОсновные функции:\n- Запись действий мыши и клавиатуры.\n- Воспроизведение записанных действий.\n- Настройка количества повторений, скорости и расписания.\n- Сохранение и загрузка записей.\n\nГорячие клавиши:\nF6: Начать/Остановить запись\nF7: Воспроизвести\nF8: Повторить последнее\nEsc: Остановить воспроизведение\nCtrl+S: Сохранить\nCtrl+O: Загрузить',
-        'no_actions_warning': 'Нет записанных действий для воспроизведения.',
-        'no_actions_to_repeat': 'Нет записанных действий для повтора.',
-        'recording_error_title': 'Ошибка записи',
-        'recording_error_text': 'Не удалось начать запись: {error}',
-        'playback_error_title': 'Ошибка воспроизведения',
-        'playback_error_text': 'Не удалось начать воспроизведение: {error}',
-        'playback_type_error': 'Несоответствие аргументов при вызове Player.play:\n{error}\n\nИнтерфейс и плеер могут быть рассинхронизированы.',
-        'playback_stop_error': 'Ошибка при остановке воспроизведения.',
-        'playback_stopped': 'Воспроизведение остановлено...',
-        'save_error': 'Ошибка сохранения:',
-        'load_error': 'Ошибка загрузки:',
-        'load_file_error': 'Не удалось загрузить файл:\n{error}',
-        'file_not_valid': 'Файл не содержит корректный список действий.',
-        'help_dialog_title': 'Справка - ClickerRecord',
-        'close_confirm': 'Вы уверены, что хотите выйти?',
-        'status_ready': 'Готово',
-        'status_recording': 'Запись... ({count})',
-        'status_playing': 'Воспроизведение... ({progress}%)',
-        'status_playing_simple': 'Воспроизведение...',
-        'status_no_actions': 'Нет записанных действий',
-        'status_saved': 'Запись сохранена:',
-        'status_loaded': 'Запись загружена:',
-        'status_error': 'Ошибка:',
-        'status_stopped': 'Остановлено',
-        'status_file': 'Файл:',
-        'status_actions': 'Действия:',
-        'dialog_ok': 'OK',
-        'dialog_cancel': 'Отмена',
-        'dialog_yes': 'Да',
-        'dialog_no': 'Нет',
-        'repeat_last': 'Повторить последнее',
-        'repeat_last_warning': 'Невозможно повторить: нет действий.',
-        'repeat_last_busy': 'Невозможно повторить: идет запись или воспроизведение.',
-        'save_success': 'Запись успешно сохранена.',
-        'load_success': 'Запись успешно загружена.',
-        'file_dialog_save': 'Сохранить запись',
-        'file_dialog_load': 'Загрузить запись',
-        'file_dialog_filter': 'Файлы кликера (*.clk);;Все файлы (*)',
-        'exit': 'Выход',
-        'settings_title': 'Настройки',
-        'about': 'О программе',
-        'about_text': 'ClickerRecord\\nМногоязычный регистратор действий мыши и клавиатуры.\\n© 2025',
-    },
-    'zh': dict(BASE_TRANSLATIONS, **{
-        'app_title': 'ClickerRecord',
-        'start_record': '开始录制',
-        'stop_record': '停止录制',
-        'play': '播放',
-        'stop_play': '停止播放',
-        'repeat': '重复上一次',
-        'save': '保存录制',
-        'load': '加载录制',
-        'help': '帮助',
-        'language': '语言',
-    }),
-    'es': dict(BASE_TRANSLATIONS, **{
-        'app_title': 'ClickerRecord',
-        'start_record': 'Iniciar grabación',
-        'stop_record': 'Detener grabación',
-        'play': 'Reproducir',
-        'stop_play': 'Detener reproducción',
-        'repeat': 'Repetir último',
-        'save': 'Guardar grabación',
-        'load': 'Cargar grabación',
-        'help': 'Ayuda',
-        'language': 'Idioma',
-    }),
-    'fr': dict(BASE_TRANSLATIONS, **{
-        'app_title': 'ClickerRecord',
-        'start_record': 'Démarrer l\'enregistrement',
-        'stop_record': 'Arrêter l\'enregistrement',
-        'play': 'Lire',
-        'stop_play': 'Arrêter la lecture',
-        'repeat': 'Répéter le dernier',
-        'save': 'Enregistrer',
-        'load': 'Charger',
-        'help': 'Aide',
-        'language': 'Langue',
-    }),
-    'de': dict(BASE_TRANSLATIONS, **{
-        'app_title': 'ClickerRecord',
-        'start_record': 'Aufnahme starten',
-        'stop_record': 'Aufnahme stoppen',
-        'play': 'Abspielen',
-        'stop_play': 'Wiedergabe stoppen',
-        'repeat': 'Letztes wiederholen',
-        'save': 'Aufnahme speichern',
-        'load': 'Aufnahme laden',
-        'help': 'Hilfe',
-        'settings': 'Einstellungen',
-        'language': 'Sprache',
-        'actions_recorded': 'Aktionen aufgezeichnet:',
-        'file': 'Datei:',
-        'ready': 'Bereit',
-        'recording': 'Aufnahme...',
-        'infinite_repeats': 'Unendliche Wiederholungen', # <-- Добавлен перевод
-        'playing': 'Wiedergabe...',
-        'no_actions': 'Keine Aktionen zum Abspielen aufgezeichnet.',
-        'error': 'Fehler',
-        'repeat_count': 'Wiederholungen:',
-        'schedule': 'Zeitplan:',
-        'once': 'Einmal ausführen',
-        'interval': 'Alle',
-        'minutes': 'Minuten ausführen',
-        'seconds': 'Sekunden ausführen', # <-- Добавлен перевод
-        'at_time': 'Ausführen um',
-        'speed': 'Wiedergabegeschwindigkeit:',
-        'help_title': 'Hilfe - ClickerRecord',
-        'help_text': 'ClickerRecord - Hilfe\n\nHauptfunktionen:\n- Maus- und Tastaturaktionen aufzeichnen.\n- Aufgezeichnete Aktionen abspielen.\n- Wiederholungen, Geschwindigkeit und Zeitplan einstellen.\n- Aufnahmen speichern und laden.\n\nTastenkombinationen:\nF6: Aufnahme starten/stoppen\nF7: Abspielen\nF8: Letztes wiederholen\nEsc: Wiedergabe stoppen\nStrg+S: Speichern\nStrg+O: Laden',
-        'no_actions_warning': 'Keine Aktionen zum Abspielen.',
-        'no_actions_to_repeat': 'Keine Aktionen zum Wiederholen.',
-        'recording_error_title': 'Aufnahmefehler',
-        'recording_error_text': 'Aufnahme konnte nicht gestartet werden: {error}',
-        'playback_error_title': 'Wiedergabefehler',
-        'playback_error_text': 'Wiedergabe konnte nicht gestartet werden: {error}',
-        'save_error': 'Fehler beim Speichern:',
-        'load_error': 'Fehler beim Laden:',
-        'close_confirm': 'Möchten Sie wirklich beenden?',
-        'status_ready': 'Bereit',
-        'status_recording': 'Aufnahme... ({count})',
-        'status_playing': 'Wiedergabe... ({progress}%)',
-        'status_playing_simple': 'Wiedergabe...',
-        'status_no_actions': 'Keine Aktionen aufgezeichnet',
-        'dialog_ok': 'OK',
-        'dialog_cancel': 'Abbrechen',
-        'dialog_yes': 'Ja',
-        'dialog_no': 'Nein',
-        'exit': 'Beenden',
-        'about': 'Über',
-        'about_text': 'ClickerRecord\\nMehrsprachiger Maus- und Tastaturrekorder.\\n© 2025'
-    }),
-    'it': dict(BASE_TRANSLATIONS, **{
-        'app_title': 'ClickerRecord',
-        'start_record': 'Avvia registrazione',
-        'stop_record': 'Ferma registrazione',
-        'play': 'Riproduci',
-        'stop_play': 'Ferma riproduzione',
-        'repeat': 'Ripeti ultimo',
-        'save': 'Salva registrazione',
-        'load': 'Carica registrazione',
-        'help': 'Aiuto',
-        'settings': 'Impostazioni',
-        'language': 'Lingua',
-        'actions_recorded': 'Azioni registrate:',
-        'file': 'File:',
-        'ready': 'Pronto',
-        'recording': 'Registrazione...',
-        'infinite_repeats': 'Ripetizioni infinite', # <-- Добавлен перевод
-        'playing': 'Riproduzione...',
-        'no_actions': 'Nessuna azione registrata da riprodurre.',
-        'error': 'Errore',
-        'repeat_count': 'Numero di ripetizioni:',
-        'schedule': 'Programmazione:',
-        'once': 'Esegui una volta',
-        'interval': 'Esegui ogni',
-        'minutes': 'minuti',
-        'seconds': 'secondi', # <-- Добавлен перевод
-        'at_time': 'Esegui alle',
-        'speed': 'Velocità di riproduzione:',
-        'help_title': 'Aiuto - ClickerRecord',
-        'help_text': 'ClickerRecord - Aiuto\n\nFunzionalità principali:\n- Registra azioni del mouse e della tastiera.\n- Riproduci azioni registrate.\n- Imposta ripetizioni, velocità e programmazione.\n- Salva e carica registrazioni.\n\nScorciatoie:\nF6: Avvia/Ferma registrazione\nF7: Riproduci\nF8: Ripeti ultimo\nEsc: Ferma riproduzione\nCtrl+S: Salva\nCtrl+O: Carica',
-        'no_actions_warning': 'Nessuna azione da riprodurre.',
-        'no_actions_to_repeat': 'Nessuna azione da ripetere.',
-        'recording_error_title': 'Errore di registrazione',
-        'recording_error_text': 'Impossibile avviare la registrazione: {error}',
-        'playback_error_title': 'Errore di riproduzione',
-        'playback_error_text': 'Impossibile avviare la riproduzione: {error}',
-        'save_error': 'Errore di salvataggio:',
-        'load_error': 'Errore di caricamento:',
-        'close_confirm': 'Sei sicuro di voler uscire?',
-        'status_ready': 'Pronto',
-        'status_recording': 'Registrazione... ({count})',
-        'status_playing': 'Riproduzione... ({progress}%)',
-        'status_playing_simple': 'Riproduzione...',
-        'status_no_actions': 'Nessuna azione registrata',
-        'dialog_ok': 'OK',
-        'dialog_cancel': 'Annulla',
-        'dialog_yes': 'Sì',
-        'dialog_no': 'No',
-        'exit': 'Esci',
-        'about': 'Informazioni',
-        'about_text': 'ClickerRecord\\nRegistratore mouse e tastiera multilingua.\\n© 2025'
-    }),
-    'ja': dict(BASE_TRANSLATIONS, **{
-        'app_title': 'ClickerRecord',
-        'start_record': '記録開始',
-        'stop_record': '記録停止',
-        'play': '再生',
-        'stop_play': '再生停止',
-        'repeat': '最後を繰り返す',
-        'save': '記録を保存',
-        'load': '記録を読込',
-        'help': 'ヘルプ',
-        'settings': '設定',
-        'language': '言語',
-        'actions_recorded': '記録されたアクション：',
-        'file': 'ファイル：',
-        'ready': '準備完了',
-        'recording': '記録中...',
-        'infinite_repeats': '無限繰り返し', # <-- Добавлен перевод
-        'playing': '再生中...',
-        'no_actions': '再生する記録がありません。',
-        'error': 'エラー',
-        'repeat_count': '繰り返し回数：',
-        'schedule': 'スケジュール：',
-        'once': '1回実行',
-        'interval': '毎',
-        'minutes': '分実行',
-        'seconds': '秒実行', # <-- Добавлен перевод
-        'at_time': '指定時刻に実行',
-        'speed': '再生速度：',
-        'help_title': 'ヘルプ - ClickerRecord',
-        'help_text': 'ClickerRecord - ヘルプ\n\n主な機能：\n- マウスとキーボードの操作を記録。\n- 記録した操作を再生。\n- 繰り返し回数、速度、スケジュールを設定。\n- 記録の保存と読込。\n\nホットキー：\nF6：記録開始/停止\nF7：再生\nF8：最後を繰り返す\nEsc：再生停止\nCtrl+S：保存\nCtrl+O：読込',
-        'no_actions_warning': '再生する操作がありません。',
-        'no_actions_to_repeat': '繰り返す操作がありません。',
-        'recording_error_title': '記録エラー',
-        'recording_error_text': '記録を開始できません：{error}',
-        'playback_error_title': '再生エラー',
-        'playback_error_text': '再生を開始できません：{error}',
-        'save_error': '保存エラー：',
-        'load_error': '読込エラー：',
-        'close_confirm': '終了してもよろしいですか？',
-        'status_ready': '準備完了',
-        'status_recording': '記録中... ({count})',
-        'status_playing': '再生中... ({progress}%)',
-        'status_playing_simple': '再生中...',
-        'status_no_actions': '記録された操作はありません',
-        'dialog_ok': 'OK',
-        'dialog_cancel': 'キャンセル',
-        'dialog_yes': 'はい',
-        'dialog_no': 'いいえ',
-        'exit': '終了',
-        'about': 'バージョン情報',
-        'about_text': 'ClickerRecord\\n多言語対応マウス・キーボード記録ツール。\n© 2025'
-    }),
-    'tr': dict(BASE_TRANSLATIONS, **{
-        'app_title': 'ClickerRecord',
-        'start_record': 'Kayıt Başlat',
-        'stop_record': 'Kaydı Durdur',
-        'play': 'Oynat',
-        'stop_play': 'Oynatmayı Durdur',
-        'repeat': 'Son İşlemi Tekrarla',
-        'save': 'Kaydı Kaydet',
-        'load': 'Kayıt Yükle',
-        'help': 'Yardım',
-        'settings': 'Ayarlar',
-        'language': 'Dil',
-        'actions_recorded': 'Kaydedilen işlemler:',
-        'file': 'Dosya:',
-        'ready': 'Hazır',
-        'recording': 'Kaydediyor...',
-        'infinite_repeats': 'Sonsuz Tekrar', # <-- Добавлен перевод
-        'playing': 'Oynatılıyor...',
-        'no_actions': 'Oynatılacak kayıtlı işlem yok.',
-        'error': 'Hata',
-        'repeat_count': 'Tekrar sayısı:',
-        'schedule': 'Zamanlama:',
-        'once': 'Bir kez çalıştır',
-        'interval': 'Her',
-        'minutes': 'dakikada bir çalıştır',
-        'seconds': 'sekund', # <-- Добавлен перевод
-        'at_time': 'Uruchom o',
-        'speed': 'Prędkość odtwarzania:',
-        'help_title': 'Yardım - ClickerRecord',
-        'help_text': 'ClickerRecord - Yardım\n\nTemel özellikler:\n- Fare ve klavye işlemlerini kaydet.\n- Kaydedilen işlemleri oynat.\n- Tekrar sayısı, hız ve zamanlama ayarla.\n- Kayıtları kaydet ve yükle.\n\nKısayollar:\nF6: Kaydı başlat/durdur\nF7: Oynat\nF8: Son işlemi tekrarla\nEsc: Oynatmayı durdur\nCtrl+S: Kaydet\nCtrl+O: Yükle',
-        'no_actions_warning': 'Oynatılacak işlem yok.',
-        'no_actions_to_repeat': 'Tekrarlanacak işlem yok.',
-        'recording_error_title': 'Kayıt Hatası',
-        'recording_error_text': 'Kayıt başlatılamadı: {error}',
-        'playback_error_title': 'Oynatma Hatası',
-        'playback_error_text': 'Oynatma başlatılamadı: {error}',
-        'save_error': 'Kaydetme hatası:',
-        'load_error': 'Yükleme hatası:',
-        'close_confirm': 'Çıkmak istediğinizden emin misiniz?',
-        'status_ready': 'Hazır',
-        'status_recording': 'Kaydediyor... ({count})',
-        'status_playing': 'Oynatılıyor... ({progress}%)',
-        'status_playing_simple': 'Oynatılıyor...',
-        'status_no_actions': 'Kayıtlı işlem yok',
-        'dialog_ok': 'Tamam',
-        'dialog_cancel': 'İptal',
-        'dialog_yes': 'Evet',
-        'dialog_no': 'Hayır',
-        'exit': 'Çıkış',
-        'about': 'Hakkında',
-        'about_text': 'ClickerRecord\\nÇok dilli fare ve klavye kaydedici.\\n© 2025'
-    }),
-    'pl': dict(BASE_TRANSLATIONS, **{
-        'app_title': 'ClickerRecord',
-        'start_record': 'Rozpocznij nagrywanie',
-        'stop_record': 'Zatrzymaj nagrywanie',
-        'play': 'Odtwórz',
-        'stop_play': 'Zatrzymaj odtwarzanie',
-        'repeat': 'Powtórz ostatnie',
-        'save': 'Zapisz nagranie',
-        'load': 'Wczytaj nagranie',
-        'help': 'Pomoc',
-        'settings': 'Ustawienia',
-        'language': 'Język',
-        'actions_recorded': 'Zarejestrowane akcje:',
-        'file': 'Plik:',
-        'ready': 'Gotowy',
-        'recording': 'Nagrywanie...',
-        'infinite_repeats': 'Nieskończone powtórzenia', # <-- Добавлен перевод
-        'playing': 'Odtwarzanie...',
-        'no_actions': 'Brak nagranych akcji do odtworzenia.',
-        'error': 'Błąd',
-        'repeat_count': 'Liczba powtórzeń:',
-        'schedule': 'Harmonogram:',
-        'once': 'Uruchom raz',
-        'interval': 'Uruchamiaj co',
-        'minutes': 'minut',
-        'seconds': 'sekund', # <-- Добавлен перевод
-        'at_time': 'Uruchom o',
-        'speed': 'Prędkość odtwarzania:',
-        'help_title': 'Pomoc - ClickerRecord',
-        'help_text': 'ClickerRecord - Pomoc\n\nGłówne funkcje:\n- Nagrywanie akcji myszy i klawiatury.\n- Odtwarzanie nagranych akcji.\n- Ustawianie powtórzeń, prędkości i harmonogramu.\n- Zapisywanie i wczytywanie nagrań.\n\nSkróty klawiszowe:\nF6: Rozpocznij/Zatrzymaj nagrywanie\nF7: Odtwórz\nF8: Powtórz ostatnie\nEsc: Zatrzymaj odtwarzanie\nCtrl+S: Zapisz\nCtrl+O: Wczytaj',
-        'no_actions_warning': 'Brak akcji do odtworzenia.',
-        'no_actions_to_repeat': 'Brak akcji do powtórzenia.',
-        'recording_error_title': 'Błąd nagrywania',
-        'recording_error_text': 'Nie można rozpocząć nagrywania: {error}',
-        'playback_error_title': 'Błąd odtwarzania',
-        'playback_error_text': 'Nie można rozpocząć odtwarzania: {error}',
-        'save_error': 'Błąd zapisu:',
-        'load_error': 'Błąd wczytywania:',
-        'close_confirm': 'Czy na pewno chcesz wyjść?',
-        'status_ready': 'Gotowy',
-        'status_recording': 'Nagrywanie... ({count})',
-        'status_playing': 'Odtwarzanie... ({progress}%)',
-        'status_playing_simple': 'Odtwarzanie...',
-        'status_no_actions': 'Brak nagranych akcji',
-        'dialog_ok': 'OK',
-        'dialog_cancel': 'Anuluj',
-        'dialog_yes': 'Tak',
-        'dialog_no': 'Nie',
-        'exit': 'Wyjście',
-        'about': 'O programie',
-        'about_text': 'ClickerRecord\\nWielojęzyczny rejestrator myszy i klawiatury.\\n© 2025'
-    }),
-    'he': dict(BASE_TRANSLATIONS, **{
-        'app_title': 'ClickerRecord',
-        'start_record': 'התחל הקלטה',
-        'stop_record': 'עצור הקלטה',
-        'play': 'הפעל',
-        'stop_play': 'עצור הפעלה',
-        'repeat': 'חזור על אחרון',
-        'save': 'שמור הקלטה',
-        'load': 'טען הקלטה',
-        'help': 'עזרה',
-        'settings': 'הגדרות',
-        'language': 'שפה',
-        'actions_recorded': 'פעולות שהוקלטו:',
-        'file': 'קובץ:',
-        'ready': 'מוכן',
-        'recording': 'מקליט...',
-        'infinite_repeats': 'חזרות אינסופיות', # <-- Добавлен перевод
-        'playing': 'מפעיל...',
-        'no_actions': 'אין פעולות מוקלטות להפעלה.',
-        'error': 'שגיאה',
-        'repeat_count': 'מספר חזרות:',
-        'schedule': 'תזמון:',
-        'once': 'הפעל פעם אחת',
-        'interval': 'הפעל כל',
-        'minutes': 'דקות',
-        'seconds': 'שניות', # <-- Добавлен перевод
-        'at_time': 'הפעל בשעה',
-        'speed': 'מהירות הפעלה:',
-        'help_title': 'עזרה - ClickerRecord',
-        'help_text': 'ClickerRecord - עזרה\n\nתכונות עיקריות:\n- הקלטת פעולות עכבר ומקלדת.\n- הפעלת פעולות מוקלטות.\n- הגדרת מספר חזרות, מהירות ותזמון.\n- שמירה וטעינה של הקלטות.\n\nקיצורי מקשים:\nF6: התחל/עצור הקלטה\nF7: הפעל\nF8: חזור על אחרון\nEsc: עצור הפעלה\nCtrl+S: שמור\nCtrl+O: טען',
-        'no_actions_warning': 'אין פעולות מוקלטות להפעלה.',
-        'no_actions_to_repeat': 'אין פעולות מוקלטות לחזרה.',
-        'recording_error_title': 'שגיאת הקלטה',
-        'recording_error_text': 'כשל בהתחלת ההקלטה: {error}',
-        'playback_error_title': 'שגיאת הפעלה',
-        'playback_error_text': 'כשל בהתחלת ההפעלה: {error}',
-        'playback_type_error': 'חוסר התאמה בארגומנטים בקריאה ל-Player.play:\n{error}\n\nהממשק והנגן עלולים לא להיות מסונכרנים.',
-        'playback_stop_error': 'שגיאה בעצירת ההפעלה.',
-        'playback_stopped': 'ההפעלה הופסקה...',
-        'save_error': 'שגיאה בשמירה:',
-        'load_error': 'שגיאה בטעינה:',
-        'load_file_error': 'כשל בטעינת הקובץ:\n{error}',
-        'file_not_valid': 'הקובץ אינו מכיל רשימת פעולות תקינה.',
-        'help_dialog_title': 'עזרה - ClickerRecord',
-        'close_confirm': 'האם אתה בטוח שברצונך לצאת?',
-        'status_ready': 'מוכן',
-        'status_recording': 'מקליט... ({count})',
-        'status_playing': 'מפעיל... ({progress}%)',
-        'status_playing_simple': 'מפעיל...',
-        'status_no_actions': 'אין פעולות מוקלטות',
-        'status_saved': 'ההקלטה נשמרה:',
-        'status_loaded': 'ההקלטה נטענה:',
-        'status_error': 'שגיאה:',
-        'status_stopped': 'נעצר',
-        'status_file': 'קובץ:',
-        'status_actions': 'פעולות:',
-        'dialog_ok': 'אישור',
-        'dialog_cancel': 'ביטול',
-        'dialog_yes': 'כן',
-        'dialog_no': 'לא',
-        'repeat_last': 'חזור על אחרון',
-        'repeat_last_warning': 'לא ניתן לחזור: אין פעולות.',
-        'repeat_last_busy': 'לא ניתן לחזור: הקלטה או הפעלה בתהליך.',
-        'save_success': 'ההקלטה נשמרה בהצלחה.',
-        'load_success': 'ההקלטה נטענה בהצלחה.',
-        'file_dialog_save': 'שמור הקלטה',
-        'file_dialog_load': 'טען הקלטה',
-        'file_dialog_filter': 'קבצי קליקר (*.clk);;כל הקבצים (*)',
-        'exit': 'יציאה',
-        'settings_title': 'הגדרות',
-        'about': 'אודות',
-        'about_text': 'ClickerRecord\\nמקליט עכבר ומקלדת רב-לשוני.\\n© 2025'
-    })
-}
-
 # Функция определения системного языка
 def detect_system_language():
     """Определяет язык системы и возвращает код языка."""
@@ -585,8 +79,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         # Устанавливаем английский по умолчанию
-        self.current_language = 'en' 
-        self.translations = TRANSLATIONS['en'] # Загружаем английские переводы
+        self.current_language = 'en'
+        self.translations = load_translations(self.current_language) # Загружаем английские переводы
         
         self.recorder = Recorder()
         self.player = Player()
@@ -609,11 +103,15 @@ class MainWindow(QMainWindow):
         self.connectSignals()
         self.setupShortcuts()
         self.updateUIState() # Начальное состояние интерфейса
+        logger.info("MainWindow UI initialized, attempting to load settings.")
         self.load_settings() # Загружаем сохраненные настройки (язык)
+        logger.info("Settings loaded and applied.")
         
     def initUI(self):
+        logger.debug("Initializing UI elements.")
         self.setWindowTitle(self.translations['app_title'])
-        self.setFixedSize(400, 780)
+        # Increased height to accommodate the action list
+        self.setFixedSize(400, 900) 
         
         icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.ico")
         if os.path.exists(icon_path):
@@ -850,7 +348,32 @@ class MainWindow(QMainWindow):
         main_layout.addLayout(speed_layout)
         self.settings_widgets.append(self.speed_slider) # Добавляем Slider
         # self.settings_widgets.extend([self.speed_slider, self.speed_value]) # Не добавляем Label
-        
+
+        # --- Action List Section ---
+        self.actions_list_label = QLabel(self.translations.get("recorded_actions_label", "Recorded Actions:"))
+        self.actions_list_label.setFont(normal_font)
+        main_layout.addWidget(self.actions_list_label)
+
+        self.actions_list_widget = QListWidget()
+        self.actions_list_widget.setFont(small_font) # Use small_font for list items
+        self.actions_list_widget.setFixedHeight(150) # Adjust height as needed
+        main_layout.addWidget(self.actions_list_widget)
+        self.settings_widgets.append(self.actions_list_widget) # Disable list during record/play
+
+        self.delete_action_button = QPushButton(self.translations.get("delete_selected_action_button", "Delete Selected Action"))
+        self.delete_action_button.setFont(normal_font)
+        self.delete_action_button.setFixedHeight(30)
+        self.delete_action_button.setStyleSheet(
+            f"QPushButton {{ {STYLE_BUTTON_NORMAL.format(bg_color='#FF6347')} }}" # Tomato color
+            f"QPushButton:pressed {{ {STYLE_BUTTON_PRESSED.format(press_color='#E5533D')} }}"
+            f"QPushButton:disabled {{ {STYLE_BUTTON_DISABLED} }}"
+        )
+        self.delete_action_button.setEnabled(False) # Initially disabled
+        main_layout.addWidget(self.delete_action_button)
+        # self.settings_widgets.append(self.delete_action_button) # This button is managed by selection state too
+
+        # --- End Action List Section ---
+
         # Создаем статус бар без кнопки Language
         self.statusBar = QStatusBar()
         self.setStatusBar(self.statusBar)
@@ -946,7 +469,11 @@ class MainWindow(QMainWindow):
         self.player.playbackFinished.connect(self.on_playback_completed, Qt.QueuedConnection)
         self.player.playbackError.connect(self.on_playback_error, Qt.QueuedConnection)
         self.player.playbackProgress.connect(self.update_playback_progress, Qt.QueuedConnection)
-    
+        
+        self.actions_list_widget.currentItemChanged.connect(self.updateUIState)
+        self.delete_action_button.clicked.connect(self.delete_selected_action)
+
+
     def setupShortcuts(self):
         """Настройка горячих клавиш"""
         # F6 - начать/остановить запись
@@ -998,65 +525,78 @@ class MainWindow(QMainWindow):
         
         # Запускаем запись
         try:
+            self.recorded_actions = [] # Clear previous actions
+            self.actions_list_widget.clear() # Clear display list
+            self.current_file_path = None # Reset file path
             self.recorder.start_recording(self.on_action_recorded)
-            print("[start_recording] Запись начата.")
+            logger.info("Recording started via UI.")
             self.updateUIState() # Обновляем интерфейс ПОСЛЕ старта записи
         except Exception as e:
-             print(f"[start_recording] Ошибка старта рекордера: {e}")
-             QMessageBox.critical(self, "Ошибка записи", f"Не удалось запустить запись: {e}")
-             self.recording = False # Сбрасываем флаг, если старт не удался
-             self.updateUIState()
+            logger.error(f"Error starting recorder: {e}", exc_info=True)
+            QMessageBox.critical(self, self.translations['recording_error_title'], self.translations.get('recording_error_text', self.translations['recording_error_text']).format(error=e))
+            self.recording = False # Сбрасываем флаг, если старт не удался
+            self.updateUIState()
     
     def stop_recording(self):
         """Остановка записи"""
         if not self.recording:
             return
-            
+        logger.info("Attempting to stop recording via UI.")
         try:
             self.recorder.stop()
             self.recording = False
-            print(f"[stop_recording] Остановлено. Состояние: recording={self.recording}, playing={self.playing}, actions={len(self.recorded_actions)}")
+            logger.info(f"Recording stopped. State: recording={self.recording}, playing={self.playing}, actions={len(self.recorded_actions)}")
         except Exception as e:
-            print(f"[stop_recording] Ошибка остановки рекордера: {e}")
+            logger.error(f"Error stopping recorder: {e}", exc_info=True)
             self.recording = False # Все равно считаем остановленным
         finally:
             self.updateUIState() # Обновляем интерфейс
             QApplication.processEvents() # Принудительно обрабатываем события
-            print("[stop_recording] Вызван updateUIState и processEvents.")
+            logger.debug("stop_recording: Called updateUIState and processEvents.")
     
     def on_action_recorded(self, action):
         if self.recording: # Доп. проверка на всякий случай
-             self.recorded_actions.append(action)
+            self.recorded_actions.append(action)
+            display_text = self._format_action_for_display(action)
+            self.actions_list_widget.addItem(display_text)
+            logger.debug(f"Action recorded and added to list: {display_text}, total actions: {len(self.recorded_actions)}")
         # Счетчик обновится через update_status
     
     def start_playback(self):
+        logger.info("Attempting to start playback.")
         if not self.recorded_actions:
-            QMessageBox.warning(self, self.translations['playback_error_title'], self.translations.get('no_actions_warning', TRANSLATIONS['en']['no_actions_warning']))
+            warning_msg = self.translations.get('no_actions_warning', self.translations['no_actions_warning'])
+            logger.warning(f"Playback start denied: {warning_msg}")
+            QMessageBox.warning(self, self.translations['playback_error_title'], warning_msg)
             return
         if self.playing or self.recording:
+            logger.warning("Playback start denied: Already playing or recording.")
             return
 
         speed_factor = self.speed_slider.value() / 100.0
+        logger.debug(f"Playback speed factor: {speed_factor}")
 
         # Определяем режим запуска
         if self.once_radio.isChecked():
             repeat_count = self.repeat_count.value()
+            logger.info(f"Starting direct playback: repeats={repeat_count}")
             self._start_direct_playback(repeat_count, speed_factor)
         elif self.interval_radio.isChecked():
             interval_seconds = self.interval_value.value()
             is_infinite = self.infinite_repeat_checkbox.isChecked()
+            logger.info(f"Starting interval playback: interval_seconds={interval_seconds}, infinite={is_infinite}")
 
             if interval_seconds > 0:
                 # Сначала устанавливаем флаги и счетчики
                 if is_infinite:
                     self.interval_repeats_left = -1 # Флаг бесконечности
-                    print(f"[start_playback] Запуск БЕСКОНЕЧНОГО интервального таймера: каждые {interval_seconds} сек")
+                    logger.debug(f"Starting INFINITE interval timer: every {interval_seconds} sec")
                 else:
                     self.interval_repeats_left = self.repeat_count.value()
                     if self.interval_repeats_left <= 0:
-                        print("[start_playback] Количество повторов <= 0, запуск не требуется.")
+                        logger.warning("Interval playback: Repeat count <= 0, no playback started.")
                         return # Не запускаем, если повторов 0 или меньше
-                    print(f"[start_playback] Запуск интервального таймера: каждые {interval_seconds} сек, повторов: {self.interval_repeats_left}")
+                    logger.debug(f"Starting interval timer: every {interval_seconds} sec, repeats: {self.interval_repeats_left}")
 
                 # Ставим self.playing = True и обновляем UI ПЕРЕД первым запуском
                 self.playing = True # Устанавливаем флаг игры
@@ -1070,7 +610,7 @@ class MainWindow(QMainWindow):
                 #      self.interval_timer.start(interval_seconds * 1000)
                 # --- КОНЕЦ УДАЛЕНИЯ ---
             else:
-                 print("[start_playback] Интервал <= 0, интервальный режим не запущен.")
+                 logger.warning("Interval playback: Interval <= 0, interval mode not started.")
                  # Если интервал 0, то играть не начинаем
                  return
 
@@ -1086,16 +626,16 @@ class MainWindow(QMainWindow):
             if msecs_to_target < 0: # Если время уже прошло сегодня, планируем на завтра
                 msecs_to_target += 24 * 60 * 60 * 1000 
             
-            print(f"[start_playback] Запуск таймера на время: {target_time.toString('HH:mm')}, через {msecs_to_target / 1000:.1f} сек")
+            logger.info(f"Scheduling playback at: {target_time.toString('HH:mm')}, in {msecs_to_target / 1000:.1f} sec")
             self.schedule_timer.setSingleShot(True) # Убедимся, что таймер однократный
             self.schedule_timer.start(msecs_to_target)
             self.playing = True # Устанавливаем флаг игры, пока ждем таймер
             self.updateUIState()
-            self.statusBar.showMessage(f"Запланировано на {target_time.toString('HH:mm')}")
+            self.statusBar.showMessage(f"{self.translations['schedule']} {target_time.toString('HH:mm')}")
 
     def _start_direct_playback(self, repeat_count, speed_factor):
         """Запускает немедленное воспроизведение заданное число раз."""
-        print(f"[start_playback] Прямой запуск: повторов={repeat_count}, скорость={speed_factor}")
+        logger.debug(f"Direct playback initiated: repeats={repeat_count}, speed={speed_factor}")
         self.playing = True
         try:
             self.player.play(
@@ -1105,37 +645,43 @@ class MainWindow(QMainWindow):
             )
             self.updateUIState()
         except TypeError as te:
-            QMessageBox.critical(self, self.translations['playback_error_title'], self.translations.get('playback_type_error', TRANSLATIONS['en']['playback_type_error']).format(error=te))
+            error_msg = self.translations.get('playback_type_error', self.translations['playback_type_error']).format(error=te)
+            logger.error(f"Playback TypeError: {error_msg}", exc_info=True)
+            QMessageBox.critical(self, self.translations['playback_error_title'], error_msg)
             self.playing = False
             self.updateUIState()
         except Exception as e:
-            QMessageBox.critical(self, self.translations['playback_error_title'], self.translations.get('playback_error_text', TRANSLATIONS['en']['playback_error_text']).format(error=e))
+            error_msg = self.translations.get('playback_error_text', self.translations['playback_error_text']).format(error=e)
+            logger.error(f"Playback Exception: {error_msg}", exc_info=True)
+            QMessageBox.critical(self, self.translations['playback_error_title'], error_msg)
             self.playing = False
             self.updateUIState()
             
     def _trigger_scheduled_playback(self):
         """Срабатывает по таймеру для 'Run at HH:MM'."""
-        print("[schedule_timer] Таймер сработал.")
+        logger.info("Scheduled playback timer triggered.")
         if self.playing: # Проверка, что не остановили вручную
              repeat_count = self.repeat_count.value()
              speed_factor = self.speed_slider.value() / 100.0
+             logger.debug(f"Executing scheduled playback: repeats={repeat_count}, speed={speed_factor}")
              # Запускаем однократно, т.к. таймер был SingleShot
              # Флаг self.playing уже True, плеер сам его сбросит по завершению/ошибке
              self._start_direct_playback(repeat_count, speed_factor)
              # Важно: Не сбрасываем self.playing здесь, ждем сигнал от плеера
         else:
-             print("[schedule_timer] Воспроизведение было отменено.")
+             logger.info("Scheduled playback was cancelled before execution.")
              # Убедимся, что UI обновлен
              self.updateUIState()
 
     def _trigger_interval_playback(self):
          """Срабатывает по таймеру для 'Run every X seconds'. Запускает ОДИН цикл воспроизведения."""
+         logger.debug("Interval playback timer triggered.")
          if self.playing: # Проверяем, что не было остановки
             is_infinite = (self.interval_repeats_left == -1) # Проверяем флаг бесконечности
             
             # Если режим конечный, проверяем, остались ли еще повторы (перед текущим запуском)
             if not is_infinite and self.interval_repeats_left <= 0:
-                 print("[_trigger_interval_playback] Повторы закончились, но таймер сработал? Остановка.")
+                 logger.info("Interval playback: Repeats ended, but timer triggered? Stopping.")
                  # Не вызываем stop_playback(), чтобы не сбросить плеер, если он еще играет последний раз
                  if self.interval_timer.isActive():
                      self.interval_timer.stop()
@@ -1143,15 +689,7 @@ class MainWindow(QMainWindow):
                  return
                  
             speed_factor = self.speed_slider.value() / 100.0
-            
-            # Уменьшаем счетчик, если режим не бесконечный (делаем это *после* запуска play)
-            # current_repeat_num_str = "(бесконечно)" # Для логгирования
-            # if not is_infinite:
-            #     remaining_before_play = self.interval_repeats_left
-            #     # self.interval_repeats_left -= 1 # Уменьшаем ПОСЛЕ play
-            #     current_repeat_num_str = f"(осталось {remaining_before_play} до запуска)"
-            
-            print(f"[_trigger_interval_playback] Запуск воспроизведения 1 раз.")
+            logger.debug(f"Executing interval cycle: speed={speed_factor}, infinite={is_infinite}, repeats_left_before_play={self.interval_repeats_left}")
             
             # Запускаем плеер на repeat_count раз
             try:
@@ -1161,13 +699,14 @@ class MainWindow(QMainWindow):
                  # Уменьшаем счетчик ПОСЛЕ успешного запуска play, если режим не бесконечный
                  if not is_infinite:
                       self.interval_repeats_left -= 1
-                      print(f"[_trigger_interval_playback] Воспроизведение запущено, осталось {self.interval_repeats_left} запусков.")
+                      logger.debug(f"Interval playback cycle started, repeats left: {self.interval_repeats_left}")
                  else:
-                      print(f"[_trigger_interval_playback] Воспроизведение (бесконечное) запущено.")
+                      logger.debug("Infinite interval playback cycle started.")
 
             except Exception as e:
-                 print(f"[interval_timer] Ошибка при запуске player.play: {e}")
-                 QMessageBox.critical(self, self.translations['playback_error_title'], self.translations.get('playback_error_text', TRANSLATIONS['en']['playback_error_text']).format(error=e))
+                 error_msg = self.translations.get('playback_error_text', self.translations['playback_error_text']).format(error=e)
+                 logger.error(f"Error during interval player.play: {error_msg}", exc_info=True)
+                 QMessageBox.critical(self, self.translations['playback_error_title'], error_msg)
                  self.stop_playback() # Останавливаем всю серию при ошибке
                  return
                  
@@ -1178,35 +717,35 @@ class MainWindow(QMainWindow):
                  interval_seconds = self.interval_value.value()
                  # Запускаем таймер только если интервал положительный
                  if interval_seconds > 0:
-                      print(f"[_trigger_interval_playback] Планируем следующий запуск через {interval_seconds} сек.")
+                      logger.debug(f"Scheduling next interval run in {interval_seconds} sec.")
                       self.interval_timer.start(interval_seconds * 1000)
                  else:
-                      print(f"[_trigger_interval_playback] Интервал <= 0, таймер не перезапускается.")
+                      logger.warning("Interval playback: Interval <= 0, timer not restarting.")
                       # Если интервал 0, а повторы конечные, останавливаем
                       if not is_infinite: 
                            self.stop_playback() 
             else:
                  # Если повторы кончились (или остановили вручную)
-                 print("[_trigger_interval_playback] Конечные повторы завершены или остановлено вручную. Таймер не перезапускается.")
+                 logger.info("Interval playback: Finite repeats completed or manually stopped. Timer not restarting.")
                  # Не меняем self.playing здесь, ждем on_playback_completed/error от последнего play
 
          else:
-             print("[_trigger_interval_playback] Воспроизведение было остановлено, таймер не перезапускается.")
+             logger.info("Interval playback: Playback was stopped, timer not restarting.")
              if self.interval_timer.isActive(): # Доп. проверка
                  self.interval_timer.stop()
 
     def stop_playback(self):
         """Остановка воспроизведения (прямого или по расписанию)"""
-        print("[stop_playback] Вызван метод остановки.")
+        logger.info("Stop playback called.")
 
         # Останавливаем таймеры расписания, если они активны
         was_timer_active = False
         if self.schedule_timer.isActive():
-            print("[stop_playback] Остановка таймера 'Run at'.")
+            logger.debug("Stopping 'Run at' schedule timer.")
             self.schedule_timer.stop()
             was_timer_active = True
         if self.interval_timer.isActive():
-            print("[stop_playback] Остановка таймера 'Run every'.")
+            logger.debug("Stopping 'Run every' interval timer.")
             self.interval_timer.stop()
             was_timer_active = True
 
@@ -1217,16 +756,16 @@ class MainWindow(QMainWindow):
         player_was_playing = self.player.is_playing # Проверяем фактическое состояние плеера
         if player_was_playing:
             try:
-                print("[stop_playback] Запрос на остановку плеера.")
+                logger.info("Requesting player stop.")
                 self.player.stop()
                 # Не меняем self.playing здесь, ждем callback
-                self.statusBar.showMessage(self.translations.get('playback_stopped', TRANSLATIONS['en']['playback_stopped']))
+                self.statusBar.showMessage(self.translations.get('playback_stopped', self.translations['playback_stopped']))
             except Exception as e:
-                print(f"[stop_playback] Ошибка при вызове player.stop(): {e}")
+                logger.error(f"Error calling player.stop(): {e}", exc_info=True)
                 # Если ошибка при остановке плеера, всё равно сбрасываем состояние GUI
                 self.playing = False
                 self.updateUIState()
-                self.statusBar.showMessage(self.translations.get('playback_stop_error', TRANSLATIONS['en']['playback_stop_error']))
+                self.statusBar.showMessage(self.translations.get('playback_stop_error', self.translations['playback_stop_error']))
                 return # Выходим, чтобы не сбросить флаг еще раз ниже
 
         # Если был активен таймер, но плеер еще не запущен (ожидание 'Run at' или между интервалами)
@@ -1234,22 +773,22 @@ class MainWindow(QMainWindow):
         # то нужно вручную сбросить флаг playing и обновить UI.
         # Если плеер БЫЛ активен, то сброс флага и обновление UI произойдет в on_playback_completed/error.
         if was_timer_active and not player_was_playing:
-             print("[stop_playback] Таймер был остановлен до запуска плеера. Сброс состояния GUI.")
+             logger.debug("Timer was stopped before player started. Resetting GUI state.")
              self.playing = False
              self.updateUIState()
         elif not player_was_playing and self.playing: # Если плеер не играет, но GUI думает, что играет
-             print("[stop_playback] Плеер не активен, но флаг GUI был установлен. Сброс состояния GUI.")
+             logger.debug("Player not active, but GUI flag was set. Resetting GUI state.")
              self.playing = False
              self.updateUIState()
         else:
-             print("[stop_playback] Либо плеер активен (ждем колбек), либо уже все остановлено.")
+             logger.debug("Player is active (waiting for callback) or already stopped.")
 
          # Убираем ручное управление кнопками - оно теперь в updateUIState
          # self.play_button.setEnabled(True)
 
     def on_playback_completed(self):
         """Слот, вызываемый сигналом playbackFinished из плеера"""
-        print("[on_playback_completed] Слот вызван сигналом.")
+        logger.info("Playback completed signal received.")
 
         # В режиме интервала:
         # - Плеер завершил ОДИН цикл (из 1 повтора).
@@ -1265,58 +804,61 @@ class MainWindow(QMainWindow):
         if not is_interval_radio_checked:
              # Это был прямой запуск или 'Run at', и он завершился.
              if self.playing: # Дополнительная проверка, что мы действительно считали себя играющими
-                 print("[on_playback_completed] Завершение НЕинтервального воспроизведения.")
+                 logger.info("Non-interval playback finished. Resetting state.")
                  self.playing = False
                  self.updateUIState() # Обновляем интерфейс
                  QApplication.processEvents() # Даем интерфейсу обновиться
-                 print("[on_playback_completed] Состояние обновлено.")
+                 logger.debug("Non-interval playback state updated.")
              else:
-                 print("[on_playback_completed] НЕинтервальное завершение, но self.playing уже был False.")
+                 logger.warning("Non-interval playback finished, but self.playing was already False.")
         else:
              # Это был один из запусков интервального таймера
-             print("[on_playback_completed] Завершение одного интервального цикла.")
+             logger.debug("Interval playback cycle finished.")
              # Проверяем, был ли это последний запуск (если режим не бесконечный)
              # Важно: self.interval_repeats_left уже уменьшен в _trigger_interval_playback *перед* этим вызовом
              is_infinite = (self.interval_repeats_left == -1) # Проверяем флаг бесконечности
              if not is_infinite and self.interval_repeats_left <= 0:
                   # Повторы закончились
-                  print("[on_playback_completed] Конечные интервальные повторы завершены. Сброс состояния.")
+                  logger.info("Finite interval repeats completed. Resetting state.")
                   if self.playing: # Доп. проверка
                      self.playing = False
                      self.updateUIState()
                      QApplication.processEvents()
-                     print("[on_playback_completed] Интервальный режим завершен, состояние обновлено.")
+                     logger.debug("Finite interval playback state updated.")
                   else:
-                     print("[on_playback_completed] Интервальный режим завершен, но self.playing уже был False.")
+                     logger.warning("Finite interval repeats completed, but self.playing was already False.")
              else:
                  # Либо режим бесконечный, либо еще остались повторы - таймер должен был перезапуститься в _trigger_interval_playback
-                 print("[on_playback_completed] Интервальный цикл продолжается (или бесконечный). Логика продолжения в _trigger_interval_playback.")
+                 logger.debug("Interval cycle continues (or infinite). Logic in _trigger_interval_playback.")
                  # Ничего не делаем здесь, интерфейс остается в состоянии 'Playing...'.
 
     def on_playback_error(self, error_message):
          """Слот, вызываемый сигналом playbackError из плеера"""
-         print(f"[on_playback_error] Слот вызван сигналом: {error_message}")
+         logger.error(f"Playback error signal received: {error_message}")
          
          # При любой ошибке останавливаем все таймеры и сбрасываем состояние
          if self.schedule_timer.isActive():
              self.schedule_timer.stop()
+             logger.debug("Scheduled timer stopped due to playback error.")
          if self.interval_timer.isActive():
              self.interval_timer.stop()
+             logger.debug("Interval timer stopped due to playback error.")
          # self.interval_repeats_left = 0 # Больше не нужно
             
          if self.playing: # Доп. проверка
-              print("[on_playback_error] Ошибка во время воспроизведения. Сброс состояния.")
+              logger.info("Error during playback. Resetting state.")
               self.playing = False
               self.updateUIState()
               QApplication.processEvents()
               QMessageBox.warning(self, self.translations['playback_error_title'], str(error_message))
               self.statusBar.showMessage(f"{self.translations['playback_error_title']}: {error_message}")
-              print("[on_playback_error] Состояние обновлено, ошибка показана.")
+              logger.debug("Playback error state updated, error message shown.")
          else:
-              print("[on_playback_error] Состояние playing уже было False.")
+              logger.warning("Playback error, but self.playing was already False.")
 
     def update_playback_progress(self, current_ms, total_ms):
         """Обновляет статус-бар для отображения прогресса воспроизведения"""
+        logger.debug(f"Updating playback progress: {current_ms}ms / {total_ms}ms")
         if self.playing and total_ms > 0:
             progress_percent = int((current_ms / total_ms) * 100)
             # Показываем прогресс только если он валидный
@@ -1336,15 +878,19 @@ class MainWindow(QMainWindow):
         self.speed_value.setText(f"{speed:.2f}x")
     
     def save_recording(self):
+        logger.info("Save recording called.")
         if not self.recorded_actions:
-            self.statusBar.showMessage(self.translations.get('status_no_actions', TRANSLATIONS['en']['status_no_actions']))
+            no_actions_msg = self.translations.get('status_no_actions', self.translations['status_no_actions'])
+            logger.warning(f"Save denied: {no_actions_msg}")
+            self.statusBar.showMessage(no_actions_msg)
             return
         
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, self.translations.get('file_dialog_save', TRANSLATIONS['en']['file_dialog_save']), "", self.translations.get('file_dialog_filter', TRANSLATIONS['en']['file_dialog_filter'])
-        )
+        dialog_title = self.translations.get('file_dialog_save', self.translations['file_dialog_save'])
+        dialog_filter = self.translations.get('file_dialog_filter', self.translations['file_dialog_filter'])
+        file_path, _ = QFileDialog.getSaveFileName(self, dialog_title, "", dialog_filter)
         
         if file_path:
+            logger.info(f"Attempting to save recording to: {file_path}")
             try:
                 if not file_path.endswith('.clk'):
                     file_path += '.clk'
@@ -1355,46 +901,65 @@ class MainWindow(QMainWindow):
                 self.current_file_path = file_path
                 file_name = os.path.basename(file_path)
                 self.action_count.setText(f"{self.translations['file']} {file_name} ({len(self.recorded_actions)} {self.translations['actions_recorded']})")
-                self.statusBar.showMessage(f"{self.translations.get('status_saved', TRANSLATIONS['en']['status_saved'])} {file_path}")
+                status_msg = f"{self.translations.get('status_saved', self.translations['status_saved'])} {file_path}"
+                self.statusBar.showMessage(status_msg)
+                logger.info(f"Recording saved successfully to {file_path}")
             except Exception as e:
-                self.statusBar.showMessage(f"{self.translations.get('save_error', TRANSLATIONS['en']['save_error'])} {str(e)}")
+                error_msg = f"{self.translations.get('save_error', self.translations['save_error'])} {str(e)}"
+                self.statusBar.showMessage(error_msg)
+                logger.error(f"Error saving recording to {file_path}: {e}", exc_info=True)
     
     def load_recording(self):
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, self.translations.get('file_dialog_load', TRANSLATIONS['en']['file_dialog_load']), "", self.translations.get('file_dialog_filter', TRANSLATIONS['en']['file_dialog_filter'])
-        )
+        logger.info("Load recording called.")
+        dialog_title = self.translations.get('file_dialog_load', self.translations['file_dialog_load'])
+        dialog_filter = self.translations.get('file_dialog_filter', self.translations['file_dialog_filter'])
+        file_path, _ = QFileDialog.getOpenFileName(self, dialog_title, "", dialog_filter)
         
         if file_path:
+            logger.info(f"Attempting to load recording from: {file_path}")
             # Загрузка происходит синхронно, интерфейс может подвиснуть на больших файлах
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
                     actions = json.load(f)
-                    if isinstance(actions, list): # Простая проверка, что это похоже на список действий
-                        self.recorded_actions = actions
-                        self.current_file_path = file_path
-                        print(f"[load_recording] Загружено действий: {len(self.recorded_actions)}")
+                if isinstance(actions, list): # Простая проверка, что это похоже на список действий
+                    self.recorded_actions = actions
+                    self.current_file_path = file_path
+                    self.actions_list_widget.clear() # Clear previous items
+                    for act in self.recorded_actions:
+                        self.actions_list_widget.addItem(self._format_action_for_display(act))
+                    logger.info(f"Recording loaded successfully from {file_path}. Actions: {len(self.recorded_actions)}")
                         # Обновляем интерфейс ПОСЛЕ успешной загрузки
-                        self.updateUIState()
+                    self.updateUIState()
                         # self.action_count.setText(...) # Обновится через update_status
                         # self.statusBar.showMessage(...) # Обновится через update_status
-                    else:
-                         raise ValueError(self.translations.get('file_not_valid', TRANSLATIONS['en']['file_not_valid']))
+                else:
+                    error_msg = self.translations.get('file_not_valid', self.translations['file_not_valid'])
+                    logger.error(f"Failed to load {file_path}: {error_msg}")
+                    raise ValueError(error_msg)
             except Exception as e:
-                QMessageBox.warning(self, self.translations['load_error'], self.translations.get('load_file_error', TRANSLATIONS['en']['load_file_error']).format(error=str(e)))
-                self.statusBar.showMessage(f"{self.translations.get('load_error', TRANSLATIONS['en']['load_error'])} {e}")
-                # Сбрасываем состояние, если загрузка не удалась
-                # self.recorded_actions = [] # Не очищаем, если была предыдущая запись
-                # self.current_file_path = None
-                self.updateUIState()
+                load_error_title = self.translations['load_error']
+                load_error_text = self.translations.get('load_file_error', self.translations['load_file_error']).format(error=str(e))
+                logger.error(f"Error loading recording from {file_path}: {e}", exc_info=True)
+                QMessageBox.warning(self, load_error_title, load_error_text)
+                self.statusBar.showMessage(f"{self.translations.get('load_error', self.translations['load_error'])} {e}")
+            # Сбрасываем состояние, если загрузка не удалась
+            # self.recorded_actions = [] # Не очищаем, если была предыдущая запись
+            # self.current_file_path = None
+                self.updateUIState() # Ensure UI is updated even on failure
     
     def show_help(self):
-        help_text = f"{self.translations.get('help_dialog_title', TRANSLATIONS['en']['help_dialog_title'])}\n\n{self.translations.get('help_text', TRANSLATIONS['en']['help_text'])}"
-        QMessageBox.information(self, self.translations.get('help_dialog_title', TRANSLATIONS['en']['help_dialog_title']), help_text)
+        logger.info("Showing help dialog.")
+        help_title = self.translations.get('help_dialog_title', self.translations['help_dialog_title'])
+        help_text_key = self.translations.get('help_text', self.translations['help_text']) 
+        help_text_content = f"{help_title}\n\n{help_text_key}" # Ensure title is part of the content for QMessageBox
+        QMessageBox.information(self, help_title, help_text_content)
 
     def updateUIState(self):
         """Обновляет состояние кнопок и настроек в зависимости от состояния приложения"""
+        logger.debug(f"Updating UI state: recording={self.recording}, playing={self.playing}, actions_count={len(self.recorded_actions)}, list_selection={self.actions_list_widget.currentRow()}")
         is_idle = not self.recording and not self.playing
         can_play = is_idle and bool(self.recorded_actions)
+        action_selected = self.actions_list_widget.currentRow() >= 0
         
         # Кнопки записи
         self.record_button.setEnabled(is_idle)
@@ -1410,8 +975,12 @@ class MainWindow(QMainWindow):
         # Кнопки сохранения/загрузки
         self.save_button.setEnabled(is_idle and bool(self.recorded_actions))
         self.load_button.setEnabled(is_idle)
+
+        # Кнопка удаления действия
+        self.delete_action_button.setEnabled(is_idle and action_selected and bool(self.recorded_actions))
         
         # Настройки - блокируем только интерактивные виджеты из списка
+        # self.actions_list_widget is in settings_widgets, so it's disabled during record/play
         for widget in self.settings_widgets:
             widget.setEnabled(is_idle)
             
@@ -1444,7 +1013,7 @@ class MainWindow(QMainWindow):
         # Чекбокс "Бесконечные" активен только если выбран режим "Run every"
         self.infinite_repeat_checkbox.setEnabled(is_idle and self.interval_radio.isChecked())
         # Если чекбокс не активен, снимаем галку
-        if not self.infinite_repeat_checkbox.isEnabled():
+        if not self.infinite_repeat_checkbox.isEnabled(): # This check might be redundant if is_idle is false
             self.infinite_repeat_checkbox.setChecked(False)
             
         # Счетчик повторов активен если:
@@ -1479,28 +1048,40 @@ class MainWindow(QMainWindow):
             self.action_count.setText(f"{self.translations['actions_recorded']} {len(self.recorded_actions)}{file_info}")
 
     def closeEvent(self, event):
+        logger.info("Close event triggered.")
         self.save_settings() # Сохраняем настройки перед выходом
         self.gui_update_timer.stop()
-        if self.is_recording:
+        # if self.is_recording: # AttributeError: 'MainWindow' object has no attribute 'is_recording'
+        #     self.stop_recording()
+        if self.recording: # Check recording attribute instead
+            logger.info("Stopping recording due to close event.")
             self.stop_recording()
-        reply = QMessageBox.question(self, self.translations.get('exit', TRANSLATIONS['en']['exit']), self.translations.get('close_confirm', TRANSLATIONS['en']['close_confirm']), QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        
+        exit_title = self.translations.get('exit', self.translations['exit'])
+        exit_confirm_msg = self.translations.get('close_confirm', self.translations['close_confirm'])
+        reply = QMessageBox.question(self, exit_title, exit_confirm_msg, QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        
         if reply == QMessageBox.Yes:
+            logger.info("User confirmed exit. Accepting close event.")
             event.accept()
         else:
+            logger.info("User cancelled exit. Ignoring close event.")
             event.ignore()
 
     def set_language(self, lang_code):
-        if lang_code in TRANSLATIONS:
+        if lang_code in LANGUAGES:  # Check against LANGUAGES, not the removed TRANSLATIONS
             self.current_language = lang_code
-            self.translations = TRANSLATIONS[self.current_language]
+            logger.info(f"Setting language to: {lang_code}")
+            self.translations = load_translations(self.current_language)
             # Обновляем тексты и сохраняем настройки ПОСЛЕ установки языка
             self.updateUITexts()
             self.save_settings() # Сохраняем язык после смены
         else:
-            print(f"Warning: Language code \'{lang_code}\' not found in TRANSLATIONS.")
+            logger.warning(f"Language code \'{lang_code}\' not found in LANGUAGES.")
 
     def updateUITexts(self):
         """Обновляет тексты всех виджетов в соответствии с текущим языком"""
+        logger.debug("Updating UI texts for current language.")
         self.setWindowTitle(self.translations['app_title'])
         self.record_button.setText(self.translations['start_record'])
         self.stop_record_button.setText(self.translations['stop_record'])
@@ -1518,14 +1099,66 @@ class MainWindow(QMainWindow):
         self.interval_label.setText(self.translations['seconds']) # <-- Обновлено на seconds
         self.time_radio.setText(self.translations['at_time'])
         self.speed_label.setText(self.translations['speed'])
+        
+        # Update new UI elements
+        self.actions_list_label.setText(self.translations.get("recorded_actions_label", "Recorded Actions:"))
+        self.delete_action_button.setText(self.translations.get("delete_selected_action_button", "Delete Selected Action"))
+
         # Обновляем строку состояния, если она не показывает прогресс
         if self.playing:
             self.statusBar.showMessage(f"{self.translations['playing']} ({self.player.get_current_playback_time() // 1000} сек / {self.player.get_total_playback_time() // 1000} сек)")
         else:
-            self.statusBar.showMessage("")
+            # Show 'Ready' or other relevant status if not playing/recording
+            if not self.recording:
+                 self.statusBar.showMessage(self.translations.get('status_ready', "Ready"))
+
         # Обновляем текст чекбокса
-        self.infinite_repeat_checkbox.setText(self.translations.get('infinite_repeats', 'Infinite Repeats'))
+        self.infinite_repeat_checkbox.setText(self.translations.get('infinite_repeats', self.translations['infinite_repeats'])) # Fallback to self.translations
     
+    def _format_action_for_display(self, action):
+        """Formats an action dictionary into a human-readable string for the QListWidget."""
+        action_type = action.get('type', 'unknown')
+        timestamp = action.get('timestamp', 0) # Timestamp from action, not live time.time()
+
+        if action_type == 'mouse_move':
+            return f"Mouse Move: ({action.get('x')}, {action.get('y')}) @ {timestamp:.2f}s"
+        elif action_type == 'mouse_click':
+            state = "Press" if action.get('pressed', False) else "Release"
+            button = action.get('button', 'N/A').replace("Button.", "")
+            return f"{state} {button}: ({action.get('x')}, {action.get('y')}) @ {timestamp:.2f}s"
+        elif action_type == 'mouse_scroll':
+            return f"Mouse Scroll: (dx={action.get('dx')}, dy={action.get('dy')}) at ({action.get('x')}, {action.get('y')}) @ {timestamp:.2f}s"
+        elif action_type == 'key_press':
+            return f"Press Key: '{action.get('key', 'N/A')}' @ {timestamp:.2f}s"
+        elif action_type == 'key_release':
+            return f"Release Key: '{action.get('key', 'N/A')}' @ {timestamp:.2f}s"
+        # Fallback for older action types from previous recorder.py versions if any
+        elif action_type == 'click': # From one of the old recorder.py versions
+            button = action.get('button', 'N/A').replace("Button.", "")
+            return f"Click {button}: ({action.get('x')}, {action.get('y')}) @ {timestamp:.2f}s"
+        elif action_type == 'scroll': # From one of the old recorder.py versions
+            return f"Scroll: (dx={action.get('dx')}, dy={action.get('dy')}) @ {timestamp:.2f}s"
+        elif action_type == 'keypress': # From one of the old recorder.py versions
+            return f"KeyPress: '{action.get('key', 'N/A')}' @ {timestamp:.2f}s"
+        else:
+            return f"Unknown action: {action} @ {timestamp:.2f}s"
+
+    def delete_selected_action(self):
+        current_row = self.actions_list_widget.currentRow()
+        if current_row >= 0 and current_row < len(self.recorded_actions):
+            logger.info(f"Deleting action at index {current_row}")
+            del self.recorded_actions[current_row]
+            self.actions_list_widget.takeItem(current_row)
+            
+            # Update status bar
+            deleted_msg = self.translations.get('action_deleted_status', "Action deleted.")
+            self.statusBar.showMessage(deleted_msg)
+            logger.info(deleted_msg)
+
+            self.updateUIState() # Update button states (e.g., save button if list becomes empty)
+        else:
+            logger.warning("Delete action called but no item selected or index out of bounds.")
+            
     def show_language_dialog(self):
         from PyQt5.QtWidgets import QDialog, QVBoxLayout, QComboBox, QPushButton, QLabel
         dialog = QDialog(self)
@@ -1567,31 +1200,142 @@ class MainWindow(QMainWindow):
 
     def save_settings(self):
         settings = {
-            'language': self.current_language # Убеждаемся, что используется правильная переменная
+            'language': self.current_language,
+            'playback_speed': self.speed_slider.value(),
+            'repeat_count': self.repeat_count.value(),
+            'infinite_repeat': self.infinite_repeat_checkbox.isChecked()
         }
+
+        if self.once_radio.isChecked():
+            settings['schedule_type'] = 'once'
+        elif self.interval_radio.isChecked():
+            settings['schedule_type'] = 'interval'
+            settings['schedule_interval_value'] = self.interval_value.value()
+        elif self.time_radio.isChecked():
+            settings['schedule_type'] = 'time'
+            settings['schedule_time_value'] = self.time_value.time().toString("HH:mm")
+
         try:
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(settings, f, indent=4)
+            logger.info(f"Settings saved to {self.config_file}")
         except IOError as e:
-            print(f"Error saving settings to {self.config_file}: {e}")
+            logger.error(f"Error saving settings to {self.config_file}: {e}", exc_info=True)
 
     def load_settings(self):
+        logger.info(f"Attempting to load settings from {self.config_file}")
+        # Default language setting (will be overridden if config file exists and is valid)
+        current_lang_code = detect_system_language() # Start with system language
+        logger.debug(f"Detected system language: {current_lang_code}")
+
         if os.path.exists(self.config_file):
             try:
                 with open(self.config_file, 'r', encoding='utf-8') as f:
                     settings = json.load(f)
-                    lang_code = settings.get('language')
-                    if lang_code and lang_code in LANGUAGES:
-                        # Просто применяем язык из файла, если он валидный
-                        self.set_language(lang_code) 
-                    else:
-                         print(f"Warning: Invalid or missing language code in {self.config_file}, using default.")
+                logger.info(f"Successfully loaded settings from {self.config_file}")
+                    
+                    # Load language first
+                lang_code_from_config = settings.get('language')
+                if lang_code_from_config and lang_code_from_config in LANGUAGES:
+                    logger.debug(f"Language code from config: {lang_code_from_config}")
+                    current_lang_code = lang_code_from_config
+                else:
+                    logger.warning(f"Invalid or missing language code in {self.config_file}, using detected system language '{current_lang_code}'.")
+                    
+                    # Apply language (this also loads translations)
+                self.set_language(current_lang_code) # set_language handles calling load_translations
+
+                    # Load other settings with defaults
+                logger.debug("Loading other settings...")
+                    self.speed_slider.setValue(settings.get('playback_speed', 100))
+                    self.update_speed_label(self.speed_slider.value()) # Update label for speed
+
+                    self.repeat_count.setValue(settings.get('repeat_count', 1))
+                    self.infinite_repeat_checkbox.setChecked(settings.get('infinite_repeat', False))
+
+                    schedule_type = settings.get('schedule_type', 'once')
+                    if schedule_type == 'interval':
+                        self.interval_radio.setChecked(True)
+                        self.interval_value.setValue(settings.get('schedule_interval_value', 5))
+                    elif schedule_type == 'time':
+                        self.time_radio.setChecked(True)
+                        time_str = settings.get('schedule_time_value')
+                        if time_str:
+                            self.time_value.setTime(QTime.fromString(time_str, "HH:mm"))
+                        else:
+                            self.time_value.setTime(QTime.currentTime().addSecs(300)) # Default if missing
+                            logger.debug(f"Schedule time set to default: {self.time_value.time().toString('HH:mm')}")
+                    else: # 'once' or default
+                        self.once_radio.setChecked(True)
+                        logger.debug("Schedule type set to 'once'.")
+                logger.info("Finished loading settings from file.")
+
 
             except (IOError, json.JSONDecodeError) as e:
-                print(f"Error loading settings from {self.config_file}: {e}, using default.")
-        # Если файла нет или он некорректный, остается английский (установлен в __init__)
+                logger.error(f"Error loading settings from {self.config_file}: {e}. Applying defaults.", exc_info=True)
+                # Apply default language if file loading failed
+                self.set_language(current_lang_code) 
+                # Apply default values for other settings
+                logger.debug("Applying default values for all settings due to error.")
+                self.speed_slider.setValue(100)
+                self.update_speed_label(100)
+                self.repeat_count.setValue(1)
+                self.infinite_repeat_checkbox.setChecked(False)
+                self.once_radio.setChecked(True)
+                self.interval_value.setValue(5)
+                self.time_value.setTime(QTime.currentTime().addSecs(300))
+        else:
+            # Config file does not exist, apply system/default language and other defaults
+            logger.info("Config file not found. Applying system/default language and default settings.")
+            self.set_language(current_lang_code) # Apply detected/default language
+            self.speed_slider.setValue(100)
+            self.update_speed_label(100)
+            logger.debug("Playback speed set to default: 100")
+            self.repeat_count.setValue(1)
+            self.infinite_repeat_checkbox.setChecked(False)
+            self.once_radio.setChecked(True)
+            self.interval_value.setValue(5)
+            self.time_value.setTime(QTime.currentTime().addSecs(300))
+
+        self.updateUIState() # Update UI based on loaded settings
+        logger.info("Finished load_settings method.")
+
+
+def load_translations(lang_code):
+    """Loads translations from a JSON file for the given language code."""
+    logger.debug(f"Attempting to load translations for language code: {lang_code}")
+    base_translations_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "translations", "en.json")
+    translations_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "translations", f"{lang_code}.json")
+
+    # Always load English translations first as a base
+    try:
+        with open(base_translations_path, 'r', encoding='utf-8') as f:
+            translations = json.load(f)
+        logger.debug(f"Successfully loaded base English translations from {base_translations_path}")
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logger.critical(f"Could not load base English translations from {base_translations_path}: {e}", exc_info=True)
+        # In a real application, you might want to exit or use hardcoded minimal English strings
+        return {} 
+
+    if lang_code == 'en':
+        logger.debug("Language code is 'en', returning base English translations.")
+        return translations # Already loaded English
+
+    try:
+        with open(translations_path, 'r', encoding='utf-8') as f:
+            specific_translations = json.load(f)
+            translations.update(specific_translations) # Override English with specific language translations
+            logger.info(f"Successfully loaded and merged translations for '{lang_code}' from {translations_path}")
+    except FileNotFoundError:
+        logger.warning(f"Translation file for '{lang_code}' not found at {translations_path}. Falling back to English.")
+        # English translations are already loaded, so nothing more to do
+    except json.JSONDecodeError as e:
+        logger.warning(f"Could not decode translation file for '{lang_code}' from {translations_path}: {e}. Falling back to English.", exc_info=True)
+        # English translations are already loaded
+    return translations
 
 def main():
+    logger.info("Application starting.")
     app = QApplication(sys.argv)
     app.setStyle('Fusion')  # Современный стиль интерфейса
     
@@ -1606,7 +1350,10 @@ def main():
     # window.player.moveToThread(app.thread()) 
     
     window.show()
-    sys.exit(app.exec_())
+    logger.info("Application event loop started.")
+    exit_code = app.exec_()
+    logger.info(f"Application exiting with code {exit_code}.")
+    sys.exit(exit_code)
 
 if __name__ == "__main__":
-    main() 
+    main()

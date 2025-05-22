@@ -3,10 +3,13 @@ import threading
 import ctypes
 import win32api
 import win32con
+import logging # Added
 from pynput.keyboard import Key, Controller as KeyboardController
 from pynput.mouse import Button, Controller as MouseController
 # Импортируем необходимые компоненты Qt для сигналов
 from PyQt5.QtCore import QObject, pyqtSignal
+
+logger = logging.getLogger("ClickerRecord") # Get the same logger instance
 
 # Класс Player теперь наследует QObject для поддержки сигналов
 class Player(QObject):
@@ -23,9 +26,11 @@ class Player(QObject):
         self.mouse = MouseController()
         self.keyboard = KeyboardController()
         self.play_thread = None
-        self.is_playing = False
+        self.is_playing = False # Should be the primary flag controlling playback loops
+        self._stop_requested = False # Internal flag to signal thread to stop
         self.total_time = 0
         self.current_time = 0
+        logger.info("Player initialized.")
     
     def play(self, actions, repeat_count=1, speed_factor=1.0): # Убираем on_complete и on_error
         """
@@ -36,11 +41,14 @@ class Player(QObject):
         :param repeat_count: Количество повторений
         :param speed_factor: Коэффициент скорости воспроизведения
         """
-        if self.is_playing:
-            print("[Player] Воспроизведение уже идет.")
-            return
+        if self.is_playing: # Check is_playing first
+            logger.warning("Play called when playback is already in progress.")
+            return # Or emit an error if preferred
             
-        print("[Player] Запуск потока воспроизведения...")
+        logger.info(f"Starting playback thread: repeats={repeat_count}, speed={speed_factor}")
+        self._stop_requested = False # Reset stop flag
+        self.is_playing = True # Set is_playing before starting the thread
+
         # Запуск воспроизведения в отдельном потоке
         self.play_thread = threading.Thread(
             target=self._play_thread,
@@ -51,59 +59,56 @@ class Player(QObject):
     
     def _play_thread(self, actions, repeat_count, speed_factor):
         """Внутренний метод для воспроизведения в отдельном потоке"""
-        self.is_playing = True
+        # self.is_playing = True # Moved to play() to set before thread starts
         self.current_time = 0
         self.total_time = self._calculate_total_time(actions, repeat_count, speed_factor)
         error_message = None
         
         try:
-            print("[Player] Начало цикла повторений.")
+            logger.info("Playback thread: Starting repeat loop.")
             for repeat_idx in range(repeat_count):
-                print(f"[Player] Повторение {repeat_idx + 1}/{repeat_count}")
+                logger.info(f"Playback thread: Repeat {repeat_idx + 1}/{repeat_count}")
                 # Проверяем, не была ли запрошена остановка воспроизведения
-                if not self.is_playing:
-                    print("[Player] Остановка обнаружена в начале повторения.")
+                if self._stop_requested: # Check internal stop flag
+                    logger.info("Playback thread: Stop requested at the beginning of a repeat.")
                     break
                     
                 # Воспроизводим действия для текущего повторения
                 self._replay_actions(actions, speed_factor)
                 
                 # Небольшая пауза между повторениями (только если не последний и не остановлено)
-                if repeat_idx < repeat_count - 1 and self.is_playing:
+                if repeat_idx < repeat_count - 1 and not self._stop_requested:
                     pause_duration = 0.5 / speed_factor
-                    print(f"[Player] Пауза между повторениями: {pause_duration:.2f} сек.")
+                    logger.debug(f"Playback thread: Pausing between repeats for {pause_duration:.2f} sec.")
                     remaining_pause = pause_duration
-                    while remaining_pause > 0 and self.is_playing:
+                    while remaining_pause > 0 and not self._stop_requested:
                          sleep_time = min(0.1, remaining_pause)
                          time.sleep(sleep_time)
                          remaining_pause -= sleep_time
         except Exception as e:
             error_message = f"Ошибка при воспроизведении: {str(e)}"
-            print(f"[Player] {error_message}")
+            logger.exception(f"Playback thread: Exception during playback loop: {error_message}")
         finally:
-            print("[Player] Завершение потока воспроизведения.")
-            was_playing = self.is_playing # Запоминаем, был ли флаг установлен до сброса
-            self.is_playing = False
+            logger.info("Playback thread: Finalizing.")
+            # was_playing = self.is_playing # is_playing should be set to False by stop() or here
+            self.is_playing = False # Ensure is_playing is false on exit
             self.current_time = 0 # Сбрасываем время
             self.total_time = 0
             
-            # Испускаем сигналы из основного потока GUI (более безопасный способ будет в main.py)
-            # Здесь мы просто вызываем их, т.к. прямое испускание из другого потока может быть небезопасно в некоторых случаях
-            # Фактическая обработка должна быть в главном потоке через Qt.QueuedConnection
             if error_message:
-                print(f"[Player] Испускаем сигнал playbackError: {error_message}")
+                logger.error(f"Playback thread: Emitting playbackError signal: {error_message}")
                 try:
                      self.playbackError.emit(error_message)
                 except Exception as emit_e:
-                     print(f"[Player] Ошибка при emit playbackError: {emit_e}")
-            elif was_playing: # Если не было ошибки и воспроизведение не было прервано ДО вызова play
-                print("[Player] Испускаем сигнал playbackFinished.")
+                     logger.exception(f"Playback thread: Error emitting playbackError: {emit_e}")
+            elif not self._stop_requested: # Only emit finished if not stopped prematurely
+                logger.info("Playback thread: Emitting playbackFinished signal.")
                 try:
                      self.playbackFinished.emit()
                 except Exception as emit_e:
-                     print(f"[Player] Ошибка при emit playbackFinished: {emit_e}")
+                     logger.exception(f"Playback thread: Error emitting playbackFinished: {emit_e}")
             else:
-                 print("[Player] Воспроизведение было остановлено до завершения, сигнал Finished не испускается.")
+                 logger.info("Playback thread: Playback was stopped by request, not emitting playbackFinished.")
 
     def _calculate_total_time(self, actions, repeat_count, speed_factor):
          """Примерный расчет общего времени воспроизведения (без пауз между повторениями)"""
@@ -112,8 +117,9 @@ class Player(QObject):
          last_action_time = max(a['timestamp'] for a in actions) if actions else 0
          single_run_time = last_action_time / speed_factor
          # Упрощенный расчет, можно добавить паузы между повторениями, если нужно точнее
-         total_time = single_run_time * repeat_count
-         return total_time
+         total_time_approx = single_run_time * repeat_count
+         logger.debug(f"Calculated total approximate playback time: {total_time_approx:.2f}s")
+         return total_time_approx
 
     def _replay_actions(self, actions, speed_factor):
         """Воспроизведение списка действий с заданной скоростью"""
@@ -124,16 +130,17 @@ class Player(QObject):
         try:
              sorted_actions = sorted(actions, key=lambda x: x.get('timestamp', 0))
         except Exception as sort_e:
-             print(f"[Player] Ошибка сортировки действий: {sort_e}")
+             logger.error(f"Error sorting actions: {sort_e}", exc_info=True)
              raise ValueError(f"Ошибка в данных действий: {sort_e}")
              
         start_time = time.perf_counter() # Используем более точный таймер
         base_timestamp = sorted_actions[0]['timestamp'] # Время первого действия
+        logger.debug(f"Replay actions started. Base timestamp: {base_timestamp:.3f}s")
         
-        for action in sorted_actions:
+        for idx, action in enumerate(sorted_actions):
             # Проверяем, не была ли запрошена остановка воспроизведения
-            if not self.is_playing:
-                print("[Player] Остановка обнаружена во время replay_actions.")
+            if self._stop_requested:
+                logger.info("Playback thread: Stop requested during _replay_actions loop.")
                 break
                 
             # Расчет целевого времени выполнения действия от начала воспроизведения
@@ -145,30 +152,38 @@ class Player(QObject):
             
             # Пауза для соблюдения временных интервалов
             if delay > 0:
+                logger.debug(f"Action {idx}: Delaying for {delay:.4f}s")
                 # Разбиваем задержку на маленькие части, чтобы быстрее реагировать на остановку
                 remaining_delay = delay
-                while remaining_delay > 0.001 and self.is_playing: # Добавим небольшой порог
+                while remaining_delay > 0.001 and not self._stop_requested: # Добавим небольшой порог
                     sleep_time = min(0.05, remaining_delay) # Уменьшим шаг для большей отзывчивости
                     time.sleep(sleep_time)
                     remaining_delay -= sleep_time
             
             # Обновляем текущее время для прогресс-бара (даже если была задержка 0)
-            self.current_time = current_elapsed_time + max(0, delay)
+            self.current_time = current_elapsed_time + max(0, delay) # This is elapsed time for this loop
             try:
-                 self.playbackProgress.emit(int(self.current_time * 1000), int(self.total_time * 1000)) # Отправляем в мс
+                 # Send progress relative to the total estimated time for all repeats
+                 # This might need adjustment if total_time is for a single run
+                 # For now, let's assume total_time is for all runs (as calculated)
+                 # and current_time is for the current single run.
+                 # A better progress would be (current_repeat * single_run_time + self.current_time)
+                 # For simplicity, we emit progress for the current run.
+                 self.playbackProgress.emit(int(self.current_time * 1000), int(self._calculate_total_time(actions, 1, speed_factor) * 1000) ) # Send progress for single run
             except Exception as emit_e:
-                 print(f"[Player] Ошибка emit playbackProgress: {emit_e}")
+                 logger.exception(f"Playback thread: Error emitting playbackProgress: {emit_e}")
 
             # Если остановка была запрошена во время задержки, прерываем выполнение
-            if not self.is_playing:
-                print("[Player] Остановка обнаружена после задержки.")
+            if self._stop_requested:
+                logger.info("Playback thread: Stop requested after delay in _replay_actions.")
                 break
             
             # Выполнение действия в зависимости от типа
             try:
+                 logger.debug(f"Action {idx}: Performing action: {action}")
                  self._perform_action(action)
             except Exception as perform_e:
-                 print(f"[Player] Ошибка выполнения действия {action}: {perform_e}")
+                 logger.exception(f"Playback thread: Error performing action {action}: {perform_e}")
                  # Решаем, стоит ли прерывать воспроизведение при ошибке одного действия
                  # пока продолжаем
             
@@ -177,6 +192,7 @@ class Player(QObject):
     def _perform_action(self, action):
         """Выполнение конкретного действия"""
         action_type = action['type']
+        logger.debug(f"Performing action type: {action_type}")
         
         if action_type == 'mouse_move':
             self.mouse.position = (action['x'], action['y'])
@@ -214,6 +230,8 @@ class Player(QObject):
                     self.keyboard.press(key)
                 else:
                     self.keyboard.release(key)
+            else:
+                logger.warning(f"Could not parse key: '{key_str}' for action: {action}")
     
     def _parse_mouse_button(self, button_str):
         """Преобразует строковое представление кнопки мыши в объект Button"""
@@ -222,72 +240,51 @@ class Player(QObject):
             'Button.right': Button.right,
             'Button.middle': Button.middle
         }
-        
-        return button_map.get(button_str, Button.left)
+        parsed_button = button_map.get(button_str)
+        if not parsed_button:
+            logger.warning(f"Unknown mouse button string: '{button_str}'. Defaulting to Left.")
+            return Button.left
+        return parsed_button
     
     def _parse_key(self, key_str):
         """Преобразует строковое представление клавиши в объект Key или символ"""
         special_keys = {
-            'Key.alt': Key.alt,
-            'Key.alt_l': Key.alt_l,
-            'Key.alt_r': Key.alt_r,
-            'Key.alt_gr': Key.alt_gr,
-            'Key.backspace': Key.backspace,
-            'Key.caps_lock': Key.caps_lock,
-            'Key.cmd': Key.cmd,
-            'Key.cmd_l': Key.cmd_l,
-            'Key.cmd_r': Key.cmd_r,
-            'Key.ctrl': Key.ctrl,
-            'Key.ctrl_l': Key.ctrl_l,
-            'Key.ctrl_r': Key.ctrl_r,
-            'Key.delete': Key.delete,
-            'Key.down': Key.down,
-            'Key.end': Key.end,
-            'Key.enter': Key.enter,
+            'Key.alt': Key.alt, 'Key.alt_l': Key.alt_l, 'Key.alt_r': Key.alt_r, 'Key.alt_gr': Key.alt_gr,
+            'Key.backspace': Key.backspace, 'Key.caps_lock': Key.caps_lock,
+            'Key.cmd': Key.cmd, 'Key.cmd_l': Key.cmd_l, 'Key.cmd_r': Key.cmd_r,
+            'Key.ctrl': Key.ctrl, 'Key.ctrl_l': Key.ctrl_l, 'Key.ctrl_r': Key.ctrl_r,
+            'Key.delete': Key.delete, 'Key.down': Key.down, 'Key.end': Key.end, 'Key.enter': Key.enter,
             'Key.esc': Key.esc,
-            'Key.f1': Key.f1,
-            'Key.f2': Key.f2,
-            'Key.f3': Key.f3,
-            'Key.f4': Key.f4,
-            'Key.f5': Key.f5,
-            'Key.f6': Key.f6,
-            'Key.f7': Key.f7,
-            'Key.f8': Key.f8,
-            'Key.f9': Key.f9,
-            'Key.f10': Key.f10,
-            'Key.f11': Key.f11,
-            'Key.f12': Key.f12,
-            'Key.home': Key.home,
-            'Key.insert': Key.insert,
-            'Key.left': Key.left,
-            'Key.menu': Key.menu,
-            'Key.num_lock': Key.num_lock,
-            'Key.page_down': Key.page_down,
-            'Key.page_up': Key.page_up,
-            'Key.pause': Key.pause,
-            'Key.print_screen': Key.print_screen,
-            'Key.right': Key.right,
+            'Key.f1': Key.f1, 'Key.f2': Key.f2, 'Key.f3': Key.f3, 'Key.f4': Key.f4,
+            'Key.f5': Key.f5, 'Key.f6': Key.f6, 'Key.f7': Key.f7, 'Key.f8': Key.f8,
+            'Key.f9': Key.f9, 'Key.f10': Key.f10, 'Key.f11': Key.f11, 'Key.f12': Key.f12,
+            'Key.home': Key.home, 'Key.insert': Key.insert, 'Key.left': Key.left, 'Key.menu': Key.menu,
+            'Key.num_lock': Key.num_lock, 'Key.page_down': Key.page_down, 'Key.page_up': Key.page_up,
+            'Key.pause': Key.pause, 'Key.print_screen': Key.print_screen, 'Key.right': Key.right,
             'Key.scroll_lock': Key.scroll_lock,
-            'Key.shift': Key.shift,
-            'Key.shift_l': Key.shift_l,
-            'Key.shift_r': Key.shift_r,
-            'Key.space': Key.space,
-            'Key.tab': Key.tab,
-            'Key.up': Key.up
+            'Key.shift': Key.shift, 'Key.shift_l': Key.shift_l, 'Key.shift_r': Key.shift_r,
+            'Key.space': Key.space, 'Key.tab': Key.tab, 'Key.up': Key.up
         }
         
         if key_str in special_keys:
             return special_keys[key_str]
-        elif len(key_str) == 1:
+        elif isinstance(key_str, str) and len(key_str) == 1: # Check if it's a single character string
             return key_str
         
-        return None
+        logger.warning(f"Could not parse key string: '{key_str}' to a valid key object or character.")
+        return None # Return None if key_str is not recognized
     
     def stop(self):
         """Останавливает воспроизведение"""
-        print("[Player] Установка флага is_playing = False")
-        self.is_playing = False
-        # Это флаг проверяется в циклах, и они будут прерваны при следующей итерации
+        logger.info("Stop requested for playback.")
+        self._stop_requested = True # Set internal flag
+        if self.play_thread and self.play_thread.is_alive():
+            logger.debug("Player stop: Waiting for playback thread to join.")
+            self.play_thread.join(timeout=1.0) # Give some time for the thread to stop gracefully
+            if self.play_thread.is_alive():
+                logger.warning("Player stop: Playback thread did not join in time.")
+        self.is_playing = False # Ensure is_playing is set to False
+        logger.info("Player stop: Playback should now be stopped.")
         
     def get_current_playback_time(self):
         """Возвращает текущее время воспроизведения в секундах"""
